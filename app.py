@@ -206,27 +206,30 @@ st.set_page_config(page_title="Kardex Farmacia", layout="wide")
 # PASO 1: CONFIGURAR LA CONEXIÓN A POSTGRESQL (NEON / STREAMLIT CLOUD)
 # ==============================================================================
 
+# Definir variables globales como respaldo usando Secrets de Streamlit
+try:
+    _db = st.secrets["postgres"]
+    DB_HOST = _db["host"]
+    DB_NAME = _db["database"]
+    DB_USER = _db["user"]
+    DB_PASS = _db["password"]
+    DB_PORT = _db["port"]
+except Exception:
+    DB_HOST = "localhost"
+    DB_NAME = "kardex_db"
+    DB_USER = "postgres"
+    DB_PASS = "admin123"
+    DB_PORT = "5432"
+
 def obtener_conexion():
     """Establece y retorna la conexión a PostgreSQL usando los Secrets de Streamlit."""
-    try:
-        # Intenta conectarse a Neon en la nube usando Secrets
-        db = st.secrets["postgres"]
-        return psycopg2.connect(
-            host=db["host"],
-            database=db["database"],
-            user=db["user"],
-            password=db["password"],
-            port=db["port"]
-        )
-    except Exception:
-        # Si no detecta Secrets (para pruebas en tu PC), usa localhost
-        return psycopg2.connect(
-            host="localhost",
-            database="kardex_db",
-            user="postgres",
-            password="admin123",
-            port="5432"
-        )
+    return psycopg2.connect(
+        host=DB_HOST,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASS,
+        port=DB_PORT
+    )
 
 def obtener_conexion():
     """Función de Paso 1: Establece y retorna la conexión a PostgreSQL con codificación UTF8"""
