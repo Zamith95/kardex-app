@@ -202,14 +202,31 @@ def generar_pdf_bonito(df_datos, titulo_reporte, subti_reporte, es_inventario=Tr
 # Configuración de página
 st.set_page_config(page_title="Kardex Farmacia", layout="wide")
 
-# =====================================================================
-# PASO 1: CONFIGURAR LA CONEXIÓN A POSTGRESQL Y OPTIMIZACIÓN CON CACHE
-# =====================================================================
-DB_HOST = "localhost"
-DB_NAME = "kardex_db"
-DB_USER = "postgres"
-DB_PASS = "admin123"
-DB_PORT = "5432"
+# ==============================================================================
+# PASO 1: CONFIGURAR LA CONEXIÓN A POSTGRESQL (NEON / STREAMLIT CLOUD)
+# ==============================================================================
+
+def obtener_conexion():
+    """Establece y retorna la conexión a PostgreSQL usando los Secrets de Streamlit."""
+    try:
+        # Intenta conectarse a Neon en la nube usando Secrets
+        db = st.secrets["postgres"]
+        return psycopg2.connect(
+            host=db["host"],
+            database=db["database"],
+            user=db["user"],
+            password=db["password"],
+            port=db["port"]
+        )
+    except Exception:
+        # Si no detecta Secrets (para pruebas en tu PC), usa localhost
+        return psycopg2.connect(
+            host="localhost",
+            database="kardex_db",
+            user="postgres",
+            password="admin123",
+            port="5432"
+        )
 
 def obtener_conexion():
     """Función de Paso 1: Establece y retorna la conexión a PostgreSQL con codificación UTF8"""
