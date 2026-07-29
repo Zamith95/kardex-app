@@ -1,20 +1,19 @@
 import streamlit as st
-
-# DEBE SER LA PRIMERA LÍNEA DE STREAMLIT EN TU CÓDIGO
-st.set_page_config(
-    page_title="HOME MEDIC",
-    page_icon="logo.png",  # Nombre exacto de la imagen de tu logo en el servidor
-    layout="wide"
-)
-
 import base64
 from datetime import datetime, timedelta
 import io
 import pandas as pd
 import psycopg2
 import psycopg2.extras
-import streamlit as st
 import openpyxl
+
+# --- DEBE SER LA PRIMERA LÍNEA DE STREAMLIT EN TU CÓDIGO (¡Y LA ÚNICA!) ---
+st.set_page_config(
+    page_title="HOME MEDIC",
+    page_icon="logo.png",  # Nombre exacto de la imagen de tu logo en la raíz según tu GitHub
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # --- IMPORTACIONES PARA GENERAR EL PDF ORDENADO ---
 from reportlab.lib.pagesizes import letter
@@ -209,8 +208,6 @@ def generar_pdf_bonito(df_datos, titulo_reporte, subti_reporte, es_inventario=Tr
     buffer.close()
     return pdf_bytes
 
-# Configuración de página
-st.set_page_config(page_title="Kardex Farmacia", layout="wide")
 
 # ==============================================================================
 # PASO 1: CONFIGURAR LA CONEXIÓN A POSTGRESQL (NEON / STREAMLIT CLOUD) CON UTF8
@@ -355,7 +352,7 @@ if config_db:
     logo_bytes_db = res['logo_bytes']
     fondo_bytes_db = res['fondo_bytes']
 else:
-    nombre_negocio_db = "Mi Farmacia Inteligente"
+    nombre_negocio_db = "HOME MEDIC"
     tema_color_db = "Celeste Pastel"
     logo_bytes_db = None
     fondo_bytes_db = None
@@ -654,16 +651,6 @@ def modal_agregar_producto_compra(lista_productos):
 # BARRA LATERAL MULTIPESTAÑA REESTRUCTURADA Y OPTIMIZADA
 # =====================================================================
 
-import streamlit as st
-
-# ⚠️ Esta DEBE ser la primera instrucción de Streamlit en tu archivo principal (app.py / main.py)
-
-st.set_page_config(
-    page_title="Nombre de tu Negocio",  # Nombre que aparecerá en la pestaña / app
-    page_icon="assets/logo.png",       # Ruta a la imagen de tu logo (PNG, JPG o ICO)
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 # --- 1. CABECERA LATERAL (Alertas y Datos de Usuario) ---
 # Usamos columnas con proporción para empujar el botón de alerta a la derecha
 col_info, col_alerta = st.sidebar.columns([3, 1])
@@ -710,7 +697,6 @@ for id_pantalla, nombre_boton in opciones_menu:
         st.rerun()
 
 # --- 4. BOTÓN DE SALIDA / PUERTITA (Al final de la barra lateral) ---
-
 # Colocamos la puertita en la esquina inferior mediante una columna
 col_vacia, col_puerta = st.sidebar.columns([3, 1])
 with col_puerta:
