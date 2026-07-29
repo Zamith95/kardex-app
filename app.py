@@ -1,3 +1,12 @@
+import streamlit as st
+
+# DEBE SER LA PRIMERA LÍNEA DE STREAMLIT EN TU CÓDIGO
+st.set_page_config(
+    page_title="HOME MEDIC",
+    page_icon="logo.png",  # Nombre exacto de la imagen de tu logo en el servidor
+    layout="wide"
+)
+
 import base64
 from datetime import datetime, timedelta
 import io
