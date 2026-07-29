@@ -15,6 +15,37 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Inyectar CSS/JS para auto-colapsar el sidebar en pantallas pequeñas (móviles)
+st.markdown(
+    """
+    <script>
+    const collapseSidebar = () => {
+        // Detecta si la pantalla es de celular (< 768px)
+        if (window.innerWidth < 768) {
+            // Busca el botón para cerrar la barra lateral en Streamlit
+            const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
+            const closeButton = window.parent.document.querySelector('[data-testid="stSidebarCollapseButton"]');
+            
+            // Si el sidebar está desplegado, simula el clic para ocultarlo
+            if (sidebar && closeButton && sidebar.getAttribute('aria-expanded') === 'true') {
+                closeButton.click();
+            }
+        }
+    };
+
+    // Escuchar cuando el usuario haga clic en cualquier elemento de navegación del sidebar
+    window.addEventListener('DOMContentLoaded', (event) => {
+        const sidebarNav = window.parent.document.querySelector('[data-testid="stSidebarNav"]');
+        if (sidebarNav) {
+            sidebarNav.addEventListener('click', () => {
+                setTimeout(collapseSidebar, 300); // Pequeña espera para permitir la selección
+            });
+        }
+    });
+    </script>
+    """,
+    unsafe_allow_html=True
+)
 # --- IMPORTACIONES PARA GENERAR EL PDF ORDENADO ---
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
