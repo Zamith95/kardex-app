@@ -300,6 +300,22 @@ def cargar_productos_db():
 # =====================================================================
 fecha_hoy_str = datetime.today().strftime('%Y-%m-%d')
 
+# PERSISTENCIA VIA COOKIES / PARÁMETROS NAVEGADOR AL REFRESCAR
+cookie_params = st.query_params
+
+if "auth_user" in cookie_params and "auth_date" in cookie_params:
+    user_cookie = cookie_params.get("auth_user")
+    date_cookie = cookie_params.get("auth_date")
+    
+    if date_cookie == fecha_hoy_str and ("logged_in" not in st.session_state or not st.session_state.logged_in):
+        res_u = ejecutar_query("SELECT usuario, rol FROM usuarios WHERE usuario = %s", (user_cookie,), fetch=True)
+        if res_u:
+            u_data = res_u[0]
+            st.session_state.logged_in = True
+            st.session_state.usuario_nombre = u_data['usuario']
+            st.session_state.usuario_rol = u_data['rol']
+            st.session_state.fecha_login = fecha_hoy_str
+
 if "fecha_login" not in st.session_state:
     st.session_state.fecha_login = None
 
@@ -308,6 +324,7 @@ if st.session_state.fecha_login != fecha_hoy_str:
     st.session_state.logged_in = False
     st.session_state.usuario_rol = None
     st.session_state.usuario_nombre = None
+    st.query_params.clear()
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -493,6 +510,11 @@ def modal_login():
                 st.session_state.usuario_nombre = u_data['usuario']
                 st.session_state.usuario_rol = u_data['rol']
                 st.session_state.fecha_login = fecha_hoy_str  # Guarda el acceso diario
+                
+                # Seteamos persistencia en URL / Cookies Nivel Navegador
+                st.query_params["auth_user"] = u_data['usuario']
+                st.query_params["auth_date"] = fecha_hoy_str
+                
                 st.toast(f"Bienvenido {u_data['usuario']} ({u_data['rol']})", icon="🔑")
                 st.rerun()
             else:
@@ -640,6 +662,7 @@ if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
     st.session_state.usuario_rol = None
     st.session_state.usuario_nombre = None
     st.session_state.fecha_login = None
+    st.query_params.clear()
     st.rerun()
 
 st.sidebar.markdown("---")
