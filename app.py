@@ -1,11 +1,11 @@
-import streamlit as st
+import base64
+from datetime import datetime, timedelta
+import io
+import pandas as pd
 import psycopg2
 import psycopg2.extras
-import pandas as pd
-from datetime import datetime, timedelta
-import base64
-import io
-
+import streamlit as st
+import openpyxl
 # --- IMPORTACIONES PARA GENERAR EL PDF ORDENADO ---
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -475,30 +475,44 @@ st.markdown(style_css, unsafe_allow_html=True)
 # =====================================================================
 # SISTEMA DE AUTENTICACIÓN POP-UP (MODAL DENTRO DEL DISEÑO)
 # =====================================================================
-@st.dialog("🔒 Inicio de Sesión - Kardex Farmacia", width="small")
-def modal_login():
-    st.write("Ingresa tus credenciales para acceder al sistema:")
-    with st.form("form_login_dialog", clear_on_submit=False):
-        usr = st.text_input("Usuario", key="input_usr_login")
-        pwd = st.text_input("Contraseña", type="password", key="input_pwd_login")
-        submit = st.form_submit_button("Ingresar al Sistema", use_container_width=True, type="primary")
-        
-        if submit:
-            res = ejecutar_query("SELECT usuario, password, rol FROM usuarios WHERE usuario = %s AND password = %s", (usr.strip(), pwd.strip()), fetch=True)
-            if res:
-                u_data = res[0]
-                st.session_state.logged_in = True
-                st.session_state.usuario_nombre = u_data['usuario']
-                st.session_state.usuario_rol = u_data['rol']
-                st.toast(f"Bienvenido {u_data['usuario']} ({u_data['rol']})", icon="🔑")
-                st.rerun()
-            else:
-                st.error("❌ Usuario o contraseña incorrectos")
+hoy_str = datetime.now().strftime("%Y-%m-%d")
 
-if not st.session_state.logged_in:
-    st.info("👋 Por favor, inicia sesión en la ventana emergente para comenzar.")
-    modal_login()
-    st.stop()
+# 1. Comprobar si ya hay una sesión guardada en la URL
+query_params = st.query_params
+sesion_activa = query_params.get("session") == "admin"
+fecha_sesion = query_params.get("date")
+
+# Validar si la sesión es del día de hoy
+if sesion_activa and fecha_sesion == hoy_str:
+    st.session_state["autenticado"] = True
+else:
+    if "autenticado" not in st.session_state:
+        st.session_state["autenticado"] = False
+
+# --- FORMULARIO DE LOGIN ---
+if not st.session_state["autenticado"]:
+    st.title("🔐 Iniciar Sesión - Botica Home Medic")
+    password_input = st.text_input("Contraseña de Administrador", type="password")
+
+    if st.button("Ingresar"):
+        # Cambia 'admin123' por la clave real que uses
+        if password_input == "admin123":
+            st.session_state["autenticado"] = True
+            # Guardamos la sesión en la URL para que dure todo el día
+            st.query_params["session"] = "admin"
+            st.query_params["date"] = hoy_str
+            st.rerun()
+        else:
+            st.error("Contraseña incorrecta")
+    st.stop()  # Detiene la ejecución para que no cargue el resto del sistema si no se ha logueado
+
+# --- BOTÓN DE CERRAR SESIÓN (Ponlo en la barra lateral / sidebar) ---
+with st.sidebar:
+    st.write("👤 **Administrador**")
+    if st.button("🚪 Cerrar Sesión"):
+        st.session_state["autenticado"] = False
+        st.query_params.clear()  # Limpia los parámetros de la URL
+        st.rerun()
 
 # --- CARGAR TODOS LOS PRODUCTOS ---
 todos_productos = cargar_productos_db()
