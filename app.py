@@ -458,14 +458,6 @@ section[data-testid="stSidebar"] {{
     -webkit-overflow-scrolling: touch !important;
 }}
 
-/* REGLA RESPONSIVA: Ocultar o colapsar la barra lateral en móviles al tocar/interactuar */
-@media (max-width: 850px) {{
-    section[data-testid="stSidebar"][aria-expanded="true"] {{
-        margin-left: -100vw !important;
-        transition: margin-left 0.3s ease-in-out;
-    }}
-}}
-
 section[data-testid="stSidebar"] > div:first-child {{
     padding-top: 0.5rem !important;
 }}
