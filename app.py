@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- INYECCIÓN SEGURA DE JAVASCRIPT PARA AUTO-COLAPSAR SIDEBAR EN CELULARES ---
+# --- INYECCIÓN SEGURA DE JAVASCRIPT PARA TOUCH SCROLL Y AUTO-COLAPSAR SIDEBAR EN CELULARES ---
 components.html(
     """
     <script>
@@ -30,12 +30,29 @@ components.html(
         }
     };
 
-    const sidebarNav = window.parent.document.querySelector('[data-testid="stSidebarNav"]');
-    if (sidebarNav) {
-        sidebarNav.addEventListener('click', () => {
-            setTimeout(collapseSidebar, 300);
-        });
-    }
+    const attachSidebarListeners = () => {
+        const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
+        if (sidebar) {
+            // Permitir que los eventos touch pasen libremente
+            sidebar.style.pointerEvents = "auto";
+            
+            // Detectar clics y toques en cualquier botón del menú dentro de la barra lateral
+            const sidebarButtons = sidebar.querySelectorAll('button');
+            sidebarButtons.forEach(button => {
+                if (!button.dataset.listenerAttached) {
+                    button.addEventListener('click', () => {
+                        setTimeout(collapseSidebar, 300);
+                    });
+                    button.dataset.listenerAttached = "true";
+                }
+            });
+        }
+    };
+
+    // Ejecutar al cargar y observar cambios dinámicos en la barra lateral
+    attachSidebarListeners();
+    const observer = new MutationObserver(attachSidebarListeners);
+    observer.observe(window.parent.document.body, { childList: true, subtree: true });
     </script>
     """,
     height=0,
@@ -481,6 +498,8 @@ style_css = f"""
 section[data-testid="stSidebar"] {{
     background-color: {tema_actual['sidebar_bg']} !important;
     color: {tema_actual['sidebar_text']} !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
 }}
 
 section[data-testid="stSidebar"] > div:first-child {{
