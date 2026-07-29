@@ -274,7 +274,8 @@ def ejecutar_query(query, params=None, commit=False, fetch=False):
             
     return resultado
 
-@st.cache_data(ttl=5)
+# OPTIMIZACIÓN DE VELOCIDAD: Se elimina el TTL para mantener el caché ultra rápido en memoria
+@st.cache_data
 def cargar_productos_db():
     query = "SELECT id_producto, nombre, marca, laboratorio, presentacion, stock_actual_unidades, precio_costo_unidad, precio_venta_unidad, precio_venta_blister, fecha_vencimiento, unidades_por_caja, unidades_por_blister FROM productos ORDER BY nombre ASC"
     res_raw = ejecutar_query(query, fetch=True)
@@ -450,11 +451,11 @@ section[data-testid="stSidebar"] {{
 }}
 
 section[data-testid="stSidebar"] > div:first-child {{
-    padding-top: 0rem !important;
+    padding-top: 0.5rem !important;
 }}
 section[data-testid="stSidebar"] .block-container {{
     padding-top: 0.5rem !important;
-    padding-bottom: 0rem !important;
+    padding-bottom: 0.5rem !important;
 }}
 
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {{
@@ -491,14 +492,13 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
 st.markdown(style_css, unsafe_allow_html=True)
 
 # =====================================================================
-# SISTEMA DE AUTENTICACIÓN POP-UP (MEJORADO: ENTER, AUTOCOMPLETE & RE-INGRESO)
+# SISTEMA DE AUTENTICACIÓN POP-UP
 # =====================================================================
 @st.dialog("🔒 Inicio de Sesión - Kardex Farmacia", width="small")
 def modal_login():
     st.write("Ingresa tus credenciales para acceder al sistema:")
     with st.form("form_login_dialog", clear_on_submit=False):
         usr = st.text_input("Usuario", key="input_usr_login")
-        # El campo contraseña admite el autocompletado y envío con ENTER
         pwd = st.text_input("Contraseña", type="password", key="input_pwd_login", autocomplete="current-password")
         submit = st.form_submit_button("Ingresar al Sistema", use_container_width=True, type="primary")
 
@@ -509,9 +509,8 @@ def modal_login():
                 st.session_state.logged_in = True
                 st.session_state.usuario_nombre = u_data['usuario']
                 st.session_state.usuario_rol = u_data['rol']
-                st.session_state.fecha_login = fecha_hoy_str  # Guarda el acceso diario
+                st.session_state.fecha_login = fecha_hoy_str
                 
-                # Seteamos persistencia en URL / Cookies Nivel Navegador
                 st.query_params["auth_user"] = u_data['usuario']
                 st.query_params["auth_date"] = fecha_hoy_str
                 
@@ -528,7 +527,6 @@ if not st.session_state.logged_in:
         if st.button("🔑 Ingrese", type="primary", use_container_width=True):
             modal_login()
             
-    # Si abre por primera vez en el día, ejecuta el pop-up automáticamente
     if "modal_visto" not in st.session_state:
         st.session_state.modal_visto = True
         modal_login()
@@ -644,9 +642,15 @@ def modal_agregar_producto_compra(lista_productos):
                     st.rerun()
 
 # =====================================================================
-# BARRA LATERAL MULTIPESTAÑA (SIN RECARGA DE URL COMPLETA)
+# BARRA LATERAL MULTIPESTAÑA REESTRUCTURADA Y OPTIMIZADA
 # =====================================================================
 
+# 1. USUARIO ARRIBA DE TODO (DISCRETO Y EN LETRAS)
+nombre_u = st.session_state.usuario_nombre or 'Usuario'
+rol_u = (st.session_state.usuario_rol or '').upper()
+st.sidebar.markdown(f"<p style='font-size: 0.8rem; color: #666; margin-bottom: 2px;'>👤 <b>usuario:</b> {nombre_u} ({rol_u})</p>", unsafe_allow_html=True)
+
+# 2. BOTÓN DE ALERTAS Y LOGO
 if total_alertas > 0:
     if st.sidebar.button("🚨 Alertas", key="btn_alerta_icono", help=f"Hay {total_alertas} artículo(s) con stock bajo o agotado"):
         mostrar_modal_alertas()
@@ -654,19 +658,11 @@ if total_alertas > 0:
 if st.session_state.logo_bytes:
     st.sidebar.image(base64.b64decode(st.session_state.logo_bytes), use_container_width=True)
 
-st.sidebar.markdown(f"<h3 style='text-align: center; margin-top: 0px; margin-bottom: 5px; font-size: 1.1rem;'>🛡️ {st.session_state.nombre_negocio}</h3>", unsafe_allow_html=True)
-st.sidebar.markdown(f"<p style='text-align: center; font-size: 0.85rem; color: #666;'>👤 <b>{st.session_state.usuario_nombre}</b> ({st.session_state.usuario_rol.upper()})</p>", unsafe_allow_html=True)
-
-if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
-    st.session_state.logged_in = False
-    st.session_state.usuario_rol = None
-    st.session_state.usuario_nombre = None
-    st.session_state.fecha_login = None
-    st.query_params.clear()
-    st.rerun()
+st.sidebar.markdown(f"<h3 style='text-align: center; margin-top: 0px; margin-bottom: 10px; font-size: 1.1rem;'>🛡️ {st.session_state.nombre_negocio}</h3>", unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
 
+# 3. MENÚ DE NAVEGACIÓN PRINCIPAL
 opciones_menu = [
     ("buscar", "🔍 Buscar Producto"),
     ("registrar", "📦 Registrar Productos"),
@@ -688,6 +684,19 @@ for id_pantalla, nombre_boton in opciones_menu:
 
 menu_url = st.session_state.pantalla_activa
 
+# 4. BOTÓN CERRAR SESIÓN ABAJO DE TODO (PUERTA CON FLECHA DISCRETA)
+st.sidebar.markdown("---")
+col_cs1, col_cs2 = st.columns([1, 4])
+with col_cs1:
+    if st.button("🚪", key="btn_logout_sidebar", help="Cerrar Sesión"):
+        st.session_state.logged_in = False
+        st.session_state.usuario_rol = None
+        st.session_state.usuario_nombre = None
+        st.session_state.fecha_login = None
+        st.query_params.clear()
+        st.rerun()
+
+# TITULO PRINCIPAL DE LA PÁGINA
 st.title(f"💊 Kardex - {st.session_state.nombre_negocio}")
 
 # =====================================================================
@@ -1173,7 +1182,7 @@ elif menu_url == "registrar":
             st.rerun()
 
 # =====================================================================
-# PANTALLA 3: REGISTRAR VENTA (HABILITADO TANTO ADMIN COMO VENDEDOR)
+# PANTALLA 3: REGISTRAR VENTA
 # =====================================================================
 elif menu_url == "venta":
     st.header("🧾 Registrar Boleta / Salida Multiproducto")
