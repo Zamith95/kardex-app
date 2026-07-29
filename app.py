@@ -1219,7 +1219,7 @@ elif menu_url == "venta":
     with col_tit_b:
         st.subheader("➕ Agregar Producto a la Boleta")
     with col_btn_reload:
-        if st.button("🔄 Actualizar Productos", help="Haz clic aquí si registraste un nuevo producto en otra pestaña para recargar la lista", use_container_width=True):
+        if st.button("🔄", help="actualizar productos", use_container_width=True):
             cargar_productos_db.clear()
             st.rerun()
     
@@ -1428,7 +1428,7 @@ elif menu_url == "compra":
         with col_c_num:
             num_doc_compra = st.text_input(
                 "🔢 Número de Documento", 
-                placeholder="Ej: F001-0001234",
+                placeholder="Ej: B001-0001234",
                 key=f"compra_num_doc_{key_v}",
                 disabled=disabled_mode
             )
