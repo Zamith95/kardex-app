@@ -652,12 +652,10 @@ st.sidebar.markdown(f"<p style='font-size: 0.8rem; color: #666; margin-bottom: 2
 
 # 2. BOTÓN DE PAJARITA SOLA CON TOOLTIP AL SOBREPONER EL MOUSE Y BOTÓN DE ALERTAS
 col_paj, col_ale = st.sidebar.columns([1, 4])
-with col_paj:
-    st.button("🎀", key="btn_pajarita_icono", help="Accesos e Identificador de Marca")
 
 with col_ale:
     if total_alertas > 0:
-        if st.button("🚨 Alertas", key="btn_alerta_icono", help=f"Hay {total_alertas} artículo(s) con stock bajo o agotado", use_container_width=True):
+        if st.button("🚨", key="btn_alerta_icono", help=f"Hay {total_alertas} artículo(s) con stock bajo o agotado", use_container_width=True):
             mostrar_modal_alertas()
 
 if st.session_state.logo_bytes:
@@ -678,7 +676,7 @@ opciones_menu = [
 ]
 
 if st.session_state.usuario_rol == "admin":
-    opciones_menu.append(("usuarios", "👥 Gestionar Usuarios"))
+    opciones_menu.append(("usuarios", "Gestionar Usuarios"))
 
 for id_pantalla, nombre_boton in opciones_menu:
     es_activo = (st.session_state.pantalla_activa == id_pantalla)
