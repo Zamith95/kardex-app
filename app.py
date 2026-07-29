@@ -7,6 +7,21 @@ import psycopg2.extras
 import streamlit as st
 import openpyxl
 
+import streamlit as st
+
+# 1. Configuración de la pestaña en el navegador
+st.set_page_config(
+    page_title="HOME MEDIC",
+    page_icon="logo.png", # Usa tu archivo de logo como favicon
+    layout="wide"
+)
+
+# 2. Inyección para que Chrome/Android reconozca el logo como icono de App
+st.markdown("""
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="logo.png">
+""", unsafe_allow_html=True)
+
 # --- IMPORTACIONES PARA GENERAR EL PDF ORDENADO ---
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
