@@ -6,60 +6,13 @@ import pandas as pd
 import psycopg2
 import psycopg2.extras
 import openpyxl
-import streamlit.components.v1 as components
 
-# --- DEBE SER LA PRIMERA LÍNEA DE STREAMLIT EN TU CÓDIGO (¡Y LA ÚNICA!) ---
+# --- DEBE SER LA PRIMERA LÍNEA DE STREAMLIT EN TU CÓDIGO ---
 st.set_page_config(
     page_title="HOME MEDIC",
-    page_icon="logo.png",  # Nombre exacto de la imagen de tu logo en la raíz según tu GitHub
+    page_icon="logo.png",
     layout="wide",
-    initial_sidebar_state="auto"  # Se ajustó a 'auto' para mejor respuesta en móviles
-)
-
-# --- INYECCIÓN SEGURA DE JAVASCRIPT PARA OCULTAR LA BARRA LATERAL AL TOCAR CUALQUIER OPCIÓN EN MÓVILES ---
-components.html(
-    """
-    <script>
-    (function() {
-        const parentDoc = window.parent.document;
-
-        // Función para colapsar la barra lateral en pantallas pequeñas/móviles
-        const forceCollapseSidebar = () => {
-            if (window.parent.innerWidth <= 850) {
-                const sidebar = parentDoc.querySelector('[data-testid="stSidebar"]');
-                const isExpanded = sidebar && sidebar.getAttribute('aria-expanded') === 'true';
-                
-                if (isExpanded) {
-                    // Seleccionar el botón oficial de colapsar sidebar de Streamlit
-                    const closeBtn = parentDoc.querySelector('[data-testid="stSidebarCollapseButton"] button') || 
-                                     parentDoc.querySelector('[data-testid="stSidebarCollapseButton"]');
-                    if (closeBtn) {
-                        closeBtn.click();
-                    }
-                }
-            }
-        };
-
-        // Escuchar clics de manera global en el documento padre
-        parentDoc.addEventListener('click', function(e) {
-            const sidebar = parentDoc.querySelector('[data-testid="stSidebar"]');
-            
-            // Comprobar si el clic o toque ocurrió dentro del sidebar
-            if (sidebar && sidebar.contains(e.target)) {
-                const clickedButton = e.target.closest('button');
-                
-                // Si se presionó un botón que NO es el botón propio de cerrar/abrir la barra
-                if (clickedButton && !clickedButton.closest('[data-testid="stSidebarCollapseButton"]')) {
-                    // Pequeño retardo para dar tiempo a registrar la selección antes de ocultar
-                    setTimeout(forceCollapseSidebar, 150);
-                }
-            }
-        }, true);
-    })();
-    </script>
-    """,
-    height=0,
-    width=0
+    initial_sidebar_state="auto"
 )
 
 # --- IMPORTACIONES PARA GENERAR EL PDF ORDENADO ---
@@ -503,6 +456,14 @@ section[data-testid="stSidebar"] {{
     color: {tema_actual['sidebar_text']} !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
+}}
+
+/* REGLA RESPONSIVA: Ocultar o colapsar la barra lateral en móviles al tocar/interactuar */
+@media (max-width: 850px) {{
+    section[data-testid="stSidebar"][aria-expanded="true"] {{
+        margin-left: -100vw !important;
+        transition: margin-left 0.3s ease-in-out;
+    }}
 }}
 
 section[data-testid="stSidebar"] > div:first-child {{
@@ -1903,7 +1864,7 @@ elif menu_url == "reportes":
         prods_venc = ejecutar_query(query_venc, (fecha_limite,), fetch=True)
         
         if not prods_venc:
-            st.success(f"🎉 ¡Excelente! No hay productos que vencen dentro de los próximos {dias_limite} días.")
+            st.success(f"🎉 ¡Excelente! No hay productos que vencerán dentro de los próximos {dias_limite} días.")
         else:
             rows_v = []
             for p in prods_venc:
