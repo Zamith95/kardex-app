@@ -651,21 +651,36 @@ rol_u = (st.session_state.usuario_rol or '').upper()
 st.sidebar.markdown(f"<p style='font-size: 0.8rem; color: #666; margin-bottom: 2px;'>👤 <b>usuario:</b> {nombre_u} ({rol_u})</p>", unsafe_allow_html=True)
 
 # 2. BOTÓN DE PAJARITA SOLA CON TOOLTIP AL SOBREPONER EL MOUSE Y BOTÓN DE ALERTAS
-col_paj, col_ale = st.sidebar.columns([1, 4])
+import base64
+import streamlit as st
 
-with col_ale:
+# --- 1. CABECERA LATERAL (Alertas y Datos de Usuario) ---
+# Usamos columnas con proporción para empujar el botón de alerta a la derecha
+col_info, col_alerta = st.sidebar.columns([3, 1])
+
+with col_info:
+    # Mostramos el usuario/rol asegurando que no se sobreponga
+    rol_actual = st.session_state.get("usuario_rol", "admin").capitalize()
+    st.markdown(f"**👤 Usuario:** {rol_actual}")
+
+with col_alerta:
+    # Botón de alerta pequeño en la esquinita derecha
     if total_alertas > 0:
-        if st.button("🚨", key="btn_alerta_icono", help=f"Hay {total_alertas} artículo(s) con stock bajo o agotado", use_container_width=True):
+        if st.button("🚨", key="btn_alerta_icono", help=f"Hay {total_alertas} artículo(s) con stock bajo o agotado", use_container_width=False):
             mostrar_modal_alertas()
 
-if st.session_state.logo_bytes:
+# --- 2. LOGO Y NOMBRE DEL NEGOCIO ---
+if st.session_state.get("logo_bytes"):
     st.sidebar.image(base64.b64decode(st.session_state.logo_bytes), use_container_width=True)
 
-st.sidebar.markdown(f"<h3 style='text-align: center; margin-top: 0px; margin-bottom: 10px; font-size: 1.1rem;'>🛡️ {st.session_state.nombre_negocio}</h3>", unsafe_allow_html=True)
+st.sidebar.markdown(
+    f"<h3 style='text-align: center; margin-top: 5px; margin-bottom: 10px; font-size: 1.1rem;'>🛡️ {st.session_state.nombre_negocio}</h3>", 
+    unsafe_allow_html=True
+)
 
 st.sidebar.markdown("---")
 
-# 3. MENÚ DE NAVEGACIÓN PRINCIPAL
+# --- 3. MENÚ DE NAVEGACIÓN PRINCIPAL ---
 opciones_menu = [
     ("buscar", "Buscar Producto"),
     ("registrar", "Registrar Productos"),
@@ -675,14 +690,26 @@ opciones_menu = [
     ("config", "Configuración")
 ]
 
-if st.session_state.usuario_rol == "admin":
+if st.session_state.get("usuario_rol") == "admin":
     opciones_menu.append(("usuarios", "Gestionar Usuarios"))
 
+# Dibujar botones del menú
 for id_pantalla, nombre_boton in opciones_menu:
     es_activo = (st.session_state.pantalla_activa == id_pantalla)
     tipo_btn = "primary" if es_activo else "secondary"
     if st.sidebar.button(nombre_boton, key=f"nav_{id_pantalla}", use_container_width=True, type=tipo_btn):
         st.session_state.pantalla_activa = id_pantalla
+        st.rerun()
+
+# --- 4. BOTÓN DE SALIDA / PUERTITA (Al final de la barra lateral) ---
+st.sidebar.markdown("---")
+
+# Colocamos la puertita en la esquina inferior mediante una columna
+col_vacia, col_puerta = st.sidebar.columns([3, 1])
+with col_puerta:
+    if st.button("🚪", key="btn_cerrar_sesion", help="Cerrar Sesión", use_container_width=False):
+        # Lógica para cerrar sesión
+        st.session_state.clear()
         st.rerun()
 
 menu_url = st.session_state.pantalla_activa
