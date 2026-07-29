@@ -6,6 +6,7 @@ import pandas as pd
 import psycopg2
 import psycopg2.extras
 import openpyxl
+import streamlit.components.v1 as components
 
 # --- DEBE SER LA PRIMERA LÍNEA DE STREAMLIT EN TU CÓDIGO (¡Y LA ÚNICA!) ---
 st.set_page_config(
@@ -15,37 +16,32 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Inyectar CSS/JS para auto-colapsar el sidebar en pantallas pequeñas (móviles)
-st.markdown(
+# --- INYECCIÓN SEGURA DE JAVASCRIPT PARA AUTO-COLAPSAR SIDEBAR EN CELULARES ---
+components.html(
     """
     <script>
     const collapseSidebar = () => {
-        // Detecta si la pantalla es de celular (< 768px)
-        if (window.innerWidth < 768) {
-            // Busca el botón para cerrar la barra lateral en Streamlit
+        if (window.parent.innerWidth < 768) {
             const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
             const closeButton = window.parent.document.querySelector('[data-testid="stSidebarCollapseButton"]');
-            
-            // Si el sidebar está desplegado, simula el clic para ocultarlo
             if (sidebar && closeButton && sidebar.getAttribute('aria-expanded') === 'true') {
                 closeButton.click();
             }
         }
     };
 
-    // Escuchar cuando el usuario haga clic en cualquier elemento de navegación del sidebar
-    window.addEventListener('DOMContentLoaded', (event) => {
-        const sidebarNav = window.parent.document.querySelector('[data-testid="stSidebarNav"]');
-        if (sidebarNav) {
-            sidebarNav.addEventListener('click', () => {
-                setTimeout(collapseSidebar, 300); // Pequeña espera para permitir la selección
-            });
-        }
-    });
+    const sidebarNav = window.parent.document.querySelector('[data-testid="stSidebarNav"]');
+    if (sidebarNav) {
+        sidebarNav.addEventListener('click', () => {
+            setTimeout(collapseSidebar, 300);
+        });
+    }
     </script>
     """,
-    unsafe_allow_html=True
+    height=0,
+    width=0
 )
+
 # --- IMPORTACIONES PARA GENERAR EL PDF ORDENADO ---
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -649,7 +645,7 @@ def modal_agregar_producto_compra(lista_productos):
         
         if tot_unidades_compra > 0 and costo_total_item > 0:
             costo_u_calc = costo_total_item / tot_unidades_compra
-            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculado:** S/. {costo_u_calc:.4f} por unidad.")
+            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculated:** S/. {costo_u_calc:.4f} por unidad.")
             
         st.markdown("---")
         col_m_btn1, col_m_btn2 = st.columns([1, 1])
