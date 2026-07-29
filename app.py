@@ -6,6 +6,7 @@ import psycopg2
 import psycopg2.extras
 import streamlit as st
 import openpyxl
+
 # --- IMPORTACIONES PARA GENERAR EL PDF ORDENADO ---
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -203,10 +204,9 @@ def generar_pdf_bonito(df_datos, titulo_reporte, subti_reporte, es_inventario=Tr
 st.set_page_config(page_title="Kardex Farmacia", layout="wide")
 
 # ==============================================================================
-# PASO 1: CONFIGURAR LA CONEXIÓN A POSTGRESQL (NEON / STREAMLIT CLOUD)
+# PASO 1: CONFIGURAR LA CONEXIÓN A POSTGRESQL (NEON / STREAMLIT CLOUD) CON UTF8
 # ==============================================================================
 
-# Definir variables globales como respaldo usando Secrets de Streamlit
 try:
     _db = st.secrets["postgres"]
     DB_HOST = _db["host"]
@@ -220,16 +220,6 @@ except Exception:
     DB_USER = "postgres"
     DB_PASS = "admin123"
     DB_PORT = "5432"
-
-def obtener_conexion():
-    """Establece y retorna la conexión a PostgreSQL usando los Secrets de Streamlit."""
-    return psycopg2.connect(
-        host=DB_HOST,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS,
-        port=DB_PORT
-    )
 
 def obtener_conexion():
     """Función de Paso 1: Establece y retorna la conexión a PostgreSQL con codificación UTF8"""
@@ -306,8 +296,19 @@ def cargar_productos_db():
     return productos
 
 # =====================================================================
-# INICIALIZACIÓN DE SESSION STATE Y CONFIGURACIÓN
+# INICIALIZACIÓN DE SESSION STATE Y CONFIGURACIÓN PERSISTENTE DIARIA
 # =====================================================================
+fecha_hoy_str = datetime.today().strftime('%Y-%m-%d')
+
+if "fecha_login" not in st.session_state:
+    st.session_state.fecha_login = None
+
+# Si cambia el día, forzamos re-autenticación automática de 1 vez al día
+if st.session_state.fecha_login != fecha_hoy_str:
+    st.session_state.logged_in = False
+    st.session_state.usuario_rol = None
+    st.session_state.usuario_nombre = None
+
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "usuario_rol" not in st.session_state:
@@ -473,14 +474,15 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
 st.markdown(style_css, unsafe_allow_html=True)
 
 # =====================================================================
-# SISTEMA DE AUTENTICACIÓN POP-UP (MODAL DENTRO DEL DISEÑO)
+# SISTEMA DE AUTENTICACIÓN POP-UP (MEJORADO: ENTER, AUTOCOMPLETE & RE-INGRESO)
 # =====================================================================
 @st.dialog("🔒 Inicio de Sesión - Kardex Farmacia", width="small")
 def modal_login():
     st.write("Ingresa tus credenciales para acceder al sistema:")
     with st.form("form_login_dialog", clear_on_submit=False):
         usr = st.text_input("Usuario", key="input_usr_login")
-        pwd = st.text_input("Contraseña", type="password", key="input_pwd_login")
+        # El campo contraseña admite el autocompletado y envío con ENTER
+        pwd = st.text_input("Contraseña", type="password", key="input_pwd_login", autocomplete="current-password")
         submit = st.form_submit_button("Ingresar al Sistema", use_container_width=True, type="primary")
 
         if submit:
@@ -490,23 +492,25 @@ def modal_login():
                 st.session_state.logged_in = True
                 st.session_state.usuario_nombre = u_data['usuario']
                 st.session_state.usuario_rol = u_data['rol']
+                st.session_state.fecha_login = fecha_hoy_str  # Guarda el acceso diario
                 st.toast(f"Bienvenido {u_data['usuario']} ({u_data['rol']})", icon="🔑")
                 st.rerun()
             else:
                 st.error("❌ Usuario o contraseña incorrectos")
 
 if not st.session_state.logged_in:
-    st.info("👋 Por favor, inicia sesión en la ventana emergente para comenzar.")
-    modal_login()
+    col_top_ing1, col_top_ing2 = st.columns([3, 1])
+    with col_top_ing1:
+        st.info("👋 Por favor, inicia sesión para comenzar a trabajar en el sistema.")
+    with col_top_ing2:
+        if st.button("🔑 Ingrese", type="primary", use_container_width=True):
+            modal_login()
+            
+    # Si abre por primera vez en el día, ejecuta el pop-up automáticamente
+    if "modal_visto" not in st.session_state:
+        st.session_state.modal_visto = True
+        modal_login()
     st.stop()
-
-# --- BOTÓN DE CERRAR SESIÓN (Ponlo en la barra lateral / sidebar) ---
-with st.sidebar:
-    st.write("👤 **Administrador**")
-    if st.button("🚪 Cerrar Sesión"):
-        st.session_state["autenticado"] = False
-        st.query_params.clear()  # Limpia los parámetros de la URL
-        st.rerun()
 
 # --- CARGAR TODOS LOS PRODUCTOS ---
 todos_productos = cargar_productos_db()
@@ -635,6 +639,7 @@ if st.sidebar.button("🚪 Cerrar Sesión", use_container_width=True):
     st.session_state.logged_in = False
     st.session_state.usuario_rol = None
     st.session_state.usuario_nombre = None
+    st.session_state.fecha_login = None
     st.rerun()
 
 st.sidebar.markdown("---")
@@ -1829,293 +1834,119 @@ elif menu_url == "reportes":
                 })
                 
             df_v = pd.DataFrame(rows_v)
-            
-            st.warning(f"⚠️ Se encontraron **{len(df_v)}** producto(s) en riesgo de vencimiento dentro de {dias_limite} días.")
-            
-            def colorear_vencimiento(val):
-                if isinstance(val, int):
-                    if val <= 0:
-                        return 'background-color: #ff4d4d; color: white; font-weight: bold;'
-                    elif val <= 30:
-                        return 'background-color: #ff9999; color: black;'
-                    elif val <= 60:
-                        return 'background-color: #ffe5cc; color: black;'
-                return ''
-
-            st.dataframe(df_v.style.map(colorear_vencimiento, subset=["Días Restantes"]), use_container_width=True)
-            
-            df_v_excel = df_v.copy()
-            df_v_excel.insert(0, "N° Item", range(1, len(df_v_excel) + 1))
-            
-            output_v = io.BytesIO()
-            with pd.ExcelWriter(output_v, engine='openpyxl') as writer:
-                df_v_excel.to_excel(writer, sheet_name="Por Vencer", index=False, startrow=4)
-                workbook = writer.book
-                worksheet = writer.sheets["Por Vencer"]
-                
-                worksheet["A1"] = f"REPORTE DE PRODUCTOS POR VENCER - {st.session_state.nombre_negocio.upper()}"
-                worksheet["A2"] = f"Límite de Evaluación: Próximos {dias_limite} días"
-                worksheet["A3"] = f"Generado el: {datetime.today().strftime('%d/%m/%Y %H:%M')}"
-                
-                for col in worksheet.columns:
-                    max_len = max(len(str(cell.value or '')) for cell in col)
-                    col_letter = col[0].column_letter
-                    worksheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
-                    
-            excel_v_bytes = output_v.getvalue()
-            pdf_v_bytes = generar_pdf_bonito(
-                df_v_excel,
-                titulo_reporte="Reporte de Productos Próximos a Vencer",
-                subti_reporte=f"Establecimiento: {st.session_state.nombre_negocio} | Alerta: Próximos {dias_limite} Días",
-                es_inventario=False
-            )
-            
-            st.write("")
-            col_v_d1, col_v_d2, col_v_d3 = st.columns([2, 1, 2])
-            with col_v_d2:
-                with st.popover("📥 Descargar", use_container_width=True):
-                    st.download_button(
-                        label="Excel (.xlsx)",
-                        data=excel_v_bytes,
-                        file_name=f"Reporte_Vencimientos_{st.session_state.nombre_negocio.replace(' ', '_')}_{dias_limite}_dias.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                    st.download_button(
-                        label="PDF (.pdf)",
-                        data=pdf_v_bytes,
-                        file_name=f"Reporte_Vencimientos_{st.session_state.nombre_negocio.replace(' ', '_')}_{dias_limite}_dias.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
+            st.warning(f"⚠️ Se encontraron **{len(df_v)}** producto(s) en riesgo de vencimiento dentro de los próximos {dias_limite} días.")
+            st.dataframe(df_v, use_container_width=True)
 
     # -------------------------------------------------------------------
-    # REPORTE 5: RANKING MÁS Y MENOS VENDIDOS
+    # REPORTE 5: RANKING DE PRODUCTOS
     # -------------------------------------------------------------------
     elif tipo_reporte_sel == "🏆 Ranking de Productos Más / Menos Vendidos":
-        st.subheader("🏆 Ranking de Rotación: Productos Más y Menos Vendidos")
+        st.subheader("🏆 Productos Más y Menos Vendidos")
         
-        periodo_rank = st.radio("Período de evaluación:", ["Esta Semana", "Este Mes", "Este Año", "Todo el Historial"], horizontal=True)
-        
-        hoy = datetime.today().date()
-        if periodo_rank == "Esta Semana":
-            f_i_r = hoy - timedelta(days=hoy.weekday())
-            f_f_r = hoy
-        elif periodo_rank == "Este Mes":
-            f_i_r = hoy.replace(day=1)
-            f_f_r = hoy
-        elif periodo_rank == "Este Año":
-            f_i_r = hoy.replace(month=1, day=1)
-            f_f_r = hoy
-        else:
-            f_i_r = datetime(2000, 1, 1).date()
-            f_f_r = hoy
-
         query_rank = """
             SELECT p.nombre, p.marca, p.presentacion, 
-                   SUM((m.unidades) + (m.blisters * p.unidades_por_blister)) AS unidades_vendidas,
-                   SUM(m.monto_total) AS total_recaudado,
-                   SUM(m.ingreso_neto) AS ganancia_generada
-            FROM movimientos m
-            JOIN productos p ON m.id_producto = p.id_producto
-            WHERE m.tipo_movimiento = 'VENTA' AND m.fecha BETWEEN %s AND %s
+                   COALESCE(SUM((m.unidades) + (m.blisters * p.unidades_por_blister)), 0) AS unidades_vendidas,
+                   COALESCE(SUM(m.monto_total), 0) AS total_recaudado
+            FROM productos p
+            LEFT JOIN movimientos m ON p.id_producto = m.id_producto AND m.tipo_movimiento = 'VENTA'
             GROUP BY p.id_producto, p.nombre, p.marca, p.presentacion
-            ORDER BY unidades_vendidas DESC, total_recaudado DESC
+            ORDER BY unidades_vendidas DESC
         """
-        ranking_data = ejecutar_query(query_rank, (f_i_r, f_f_r), fetch=True)
+        ranking_data = ejecutar_query(query_rank, fetch=True)
         
-        if not ranking_data:
-            st.info("No hay datos de ventas registradas en el período seleccionado.")
-        else:
-            df_rank = pd.DataFrame(ranking_data, columns=[
-                "Producto", "Principio Activo", "Presentación", "Unidades Vendidas", "Total Recaudado (S/.)", "Ganancia Generada (S/.)"
-            ])
-            
-            df_rank.insert(0, "Posición", range(1, len(df_rank) + 1))
-            
-            top_1 = df_rank.iloc[0]
-            bottom_1 = df_rank.iloc[-1]
+        if ranking_data:
+            df_rank = pd.DataFrame(ranking_data, columns=["Producto", "Principio Activo", "Presentación", "Unidades Vendidas", "Total Recaudado (S/.)"])
             
             col_r1, col_r2 = st.columns(2)
             with col_r1:
-                st.success(f"🥇 **Producto Más Vendido:**\n\n**{top_1['Producto']}** ({top_1['Unidades Vendidas']} u. vendidas)")
+                st.markdown("### 🔥 Top 10 Más Vendidos")
+                st.dataframe(df_rank.head(10), use_container_width=True)
             with col_r2:
-                st.error(f"📉 **Producto Menos Vendido:**\n\n**{bottom_1['Producto']}** ({bottom_1['Unidades Vendidas']} u. vendidas)")
-                
-            st.markdown("---")
-            st.dataframe(df_rank, use_container_width=True)
-            
-            df_rk_excel = df_rank.copy()
-            
-            output_rk = io.BytesIO()
-            with pd.ExcelWriter(output_rk, engine='openpyxl') as writer:
-                df_rk_excel.to_excel(writer, sheet_name="Ranking Rotacion", index=False, startrow=4)
-                workbook = writer.book
-                worksheet = writer.sheets["Ranking Rotacion"]
-                
-                worksheet["A1"] = f"RANKING DE PRODUCTOS POR ROTACIÓN - {st.session_state.nombre_negocio.upper()}"
-                worksheet["A2"] = f"Período: {periodo_rank}"
-                worksheet["A3"] = f"Generado el: {datetime.today().strftime('%d/%m/%Y %H:%M')}"
-                
-                for col in worksheet.columns:
-                    max_len = max(len(str(cell.value or '')) for cell in col)
-                    col_letter = col[0].column_letter
-                    worksheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
-                    
-            excel_rk_bytes = output_rk.getvalue()
-            pdf_rk_bytes = generar_pdf_bonito(
-                df_rk_excel,
-                titulo_reporte="Ranking de Rotación de Productos",
-                subti_reporte=f"Establecimiento: {st.session_state.nombre_negocio} | Período: {periodo_rank}",
-                es_inventario=False
-            )
-            
-            st.write("")
-            col_rk_d1, col_rk_d2, col_rk_d3 = st.columns([2, 1, 2])
-            with col_rk_d2:
-                with st.popover("📥 Descargar", use_container_width=True):
-                    st.download_button(
-                        label="Excel (.xlsx)",
-                        data=excel_rk_bytes,
-                        file_name=f"Ranking_Productos_{st.session_state.nombre_negocio.replace(' ', '_')}_{periodo_rank.replace(' ', '_')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                    st.download_button(
-                        label="PDF (.pdf)",
-                        data=pdf_rk_bytes,
-                        file_name=f"Ranking_Productos_{st.session_state.nombre_negocio.replace(' ', '_')}_{periodo_rank.replace(' ', '_')}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
+                st.markdown("### 🧊 Top 10 Menos Vendidos / Sin Salida")
+                st.dataframe(df_rank.tail(10).sort_values(by="Unidades Vendidas", ascending=True), use_container_width=True)
 
 # =====================================================================
-# PANTALLA 6: CONFIGURACIÓN DEL SISTEMA
+# PANTALLA 6: CONFIGURACIÓN
 # =====================================================================
 elif menu_url == "config":
-    st.header("⚙️ Configuración y Personalización del Sistema")
+    st.header("⚙️ Configuración del Sistema")
     
     if st.session_state.usuario_rol != "admin":
-        st.warning("🔒 Modo Solo Lectura: Las configuraciones del sistema solo pueden ser modificadas por un Administrador.")
-    
-    disabled_mode = (st.session_state.usuario_rol != "admin")
-    st.write("Ajusta el tema visual de tu Kardex y todo se guardará de forma permanente en tu Base de Datos.")
-    
-    st.markdown("---")
-    
-    with st.expander("🎨 Temas y Color de Interfaz (Letra Inteligente)", expanded=True):
-        col_t1, col_t2 = st.columns([2, 2])
-        with col_t1:
-            seleccion_tema = st.selectbox(
-                "Selecciona un esquema de color de fondo:",
-                list(config_temas.keys()),
-                index=list(config_temas.keys()).index(st.session_state.tema_color),
-                disabled=disabled_mode
-            )
-            if seleccion_tema != st.session_state.tema_color and st.session_state.usuario_rol == "admin":
-                ejecutar_query("UPDATE configuracion SET tema_color = %s WHERE id = 1", (seleccion_tema,), commit=True)
-                st.session_state.tema_color = seleccion_tema
-                st.success(f"Tema cambiado y guardado permanentemente a: **{seleccion_tema}**.")
-                st.rerun()
-        with col_t2:
-            st.info(
-                f"💡 **Modo Adaptativo Activo**:\n"
-                f"- Color del fondo principal y barra lateral unificados.\n"
-                f"- El color de las letras se adaptó automáticamente a: `{tema_actual['container_text']}`."
-            )
-
-    with st.expander("📛 Nombre de la Empresa", expanded=True):
-        col_nom, col_vacio = st.columns([2, 2])
-        with col_nom:
-            nom_input = st.text_input("Ingresa el nombre que aparecerá en el sistema:", value=st.session_state.nombre_negocio, disabled=disabled_mode)
-            if st.button("💾 Guardar Nombre", use_container_width=True, disabled=disabled_mode) and st.session_state.usuario_rol == "admin":
-                ejecutar_query("UPDATE configuracion SET nombre_negocio = %s WHERE id = 1", (nom_input,), commit=True)
-                st.session_state.nombre_negocio = nom_input
-                st.success("¡Nombre del negocio guardado de manera permanente en tu base de datos!")
-                st.rerun()
-
-    with st.expander("🖼️ Logo del Negocio"):
-        col_logo1, col_logo2 = st.columns(2)
-        with col_logo1:
-            logo_uploaded = st.file_uploader("Sube el logotipo de tu farmacia (PNG/JPG):", type=["png", "jpg", "jpeg"], key="config_logo", disabled=disabled_mode)
-            if logo_uploaded is not None and st.session_state.usuario_rol == "admin":
-                if st.button("💾 Guardar Logo", use_container_width=True):
-                    bytes_logo = logo_uploaded.read()
-                    encoded_logo = base64.b64encode(bytes_logo).decode()
+        st.warning("🔒 Solo los usuarios Administradores pueden cambiar la configuración de la empresa y la interfaz.")
+    else:
+        st.subheader("🎨 Personalización de la Aplicación")
+        
+        with st.form("form_config_app"):
+            nuevo_nombre = st.text_input("Nombre de la Farmacia / Empresa", value=st.session_state.nombre_negocio)
+            
+            temas = ["Celeste Pastel", "Gris Elegante", "Azul Profesional", "Blanco Puro", "Oscuro Clásico"]
+            idx_tema = temas.index(st.session_state.tema_color) if st.session_state.tema_color in temas else 0
+            nuevo_tema = st.selectbox("Tema de Colores", temas, index=idx_tema)
+            
+            logo_file = st.file_uploader("Cargar Logo (PNG o JPG)", type=["png", "jpg", "jpeg"])
+            fondo_file = st.file_uploader("Cargar Imagen de Fondo (PNG o JPG)", type=["png", "jpg", "jpeg"])
+            
+            guardar_conf = st.form_submit_button("💾 Guardar Configuración", type="primary")
+            
+            if guardar_conf:
+                st.session_state.nombre_negocio = nuevo_nombre
+                st.session_state.tema_color = nuevo_tema
+                
+                logo_b64 = st.session_state.logo_bytes
+                if logo_file is not None:
+                    logo_b64 = base64.b64encode(logo_file.read()).decode('utf-8')
+                    st.session_state.logo_bytes = logo_b64
                     
-                    ejecutar_query("UPDATE configuracion SET logo_bytes = %s WHERE id = 1", (encoded_logo,), commit=True)
-                    st.session_state.logo_bytes = encoded_logo
-                    st.success("¡Logo guardado permanentemente en la Base de Datos!")
-                    st.rerun()
-        with col_logo2:
-            st.write("**Vista Previa del Logo Actual:**")
-            if st.session_state.logo_bytes:
-                st.image(base64.b64decode(st.session_state.logo_bytes), width=150)
-                if st.button("🗑️ Eliminar Logo", key="del_logo", disabled=disabled_mode) and st.session_state.usuario_rol == "admin":
-                    ejecutar_query("UPDATE configuracion SET logo_bytes = NULL WHERE id = 1", commit=True)
-                    st.session_state.logo_bytes = None
-                    st.rerun()
-            else:
-                st.info("No hay ningún logotipo configurado actualmente.")
-
-    with st.expander("🌌 Fondo de Pantalla del Sistema"):
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            fondo_uploaded = st.file_uploader("Selecciona una imagen para el fondo de pantalla (PNG/JPG):", type=["png", "jpg", "jpeg"], key="config_fondo", disabled=disabled_mode)
-            if fondo_uploaded is not None and st.session_state.usuario_rol == "admin":
-                if st.button("💾 Guardar Fondo", use_container_width=True):
-                    bytes_fondo = fondo_uploaded.read()
-                    encoded_fondo = base64.b64encode(bytes_fondo).decode()
+                fondo_b64 = st.session_state.fondo_bytes
+                if fondo_file is not None:
+                    fondo_b64 = base64.b64encode(fondo_file.read()).decode('utf-8')
+                    st.session_state.fondo_bytes = fondo_b64
                     
-                    ejecutar_query("UPDATE configuracion SET fondo_bytes = %s WHERE id = 1", (encoded_fondo,), commit=True)
-                    st.session_state.fondo_bytes = encoded_fondo
-                    st.success("¡Fondo de pantalla guardado de manera permanente!")
-                    st.rerun()
-        with col_f2:
-            st.write("**Configuración de Fondo:**")
-            if st.session_state.fondo_bytes:
-                st.info("Fondo de pantalla personalizado activo.")
-                if st.button("🗑️ Restablecer Fondo Original", key="del_fondo", disabled=disabled_mode) and st.session_state.usuario_rol == "admin":
-                    ejecutar_query("UPDATE configuracion SET fondo_bytes = NULL WHERE id = 1", commit=True)
-                    st.session_state.fondo_bytes = None
-                    st.rerun()
-            else:
-                st.info("Fondo de pantalla predeterminado.")
+                ejecutar_query(
+                    "UPDATE configuracion SET nombre_negocio=%s, tema_color=%s, logo_bytes=%s, fondo_bytes=%s WHERE id=1",
+                    (nuevo_nombre, nuevo_tema, logo_b64, fondo_b64),
+                    commit=True
+                )
+                
+                st.toast("⚙️ ¡Configuración guardada exitosamente!", icon="✅")
+                st.rerun()
 
 # =====================================================================
-# PANTALLA 7: GESTIÓN DE USUARIOS (SOLO ADMINISTRADOR)
+# PANTALLA 7: GESTIÓN DE USUARIOS
 # =====================================================================
 elif menu_url == "usuarios" and st.session_state.usuario_rol == "admin":
     st.header("👥 Gestión de Usuarios y Permisos")
-    st.write("Como Administrador, puedes crear nuevos usuarios para tus vendedores u otros administradores.")
     
-    st.markdown("---")
-    col_u1, col_u2 = st.columns([1, 1])
-    
-    with col_u1:
-        st.subheader("➕ Crear Nuevo Usuario")
-        with st.form("form_crear_usuario", clear_on_submit=True):
-            nuevo_user = st.text_input("Nombre de Usuario / Login")
-            nuevo_pass = st.text_input("Contraseña", type="password")
-            nuevo_rol = st.selectbox("Rol asignado", ["vendedor", "admin"])
+    st.subheader("➕ Registrar Nuevo Usuario")
+    with st.form("form_crear_usuario", clear_on_submit=True):
+        col_u1, col_u2, col_u3 = st.columns(3)
+        with col_u1:
+            u_nombre = st.text_input("Nombre de Usuario")
+        with col_u2:
+            u_pass = st.text_input("Contraseña", type="password")
+        with col_u3:
+            u_rol = st.selectbox("Rol del Usuario", ["vendedor", "admin"])
             
-            btn_crear_u = st.form_submit_button("💾 Crear Usuario", use_container_width=True, type="primary")
-            if btn_crear_u:
-                if not nuevo_user.strip() or not nuevo_pass.strip():
-                    st.error("⚠️ Usuario y Contraseña son obligatorios.")
-                else:
-                    try:
-                        ejecutar_query("INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)", (nuevo_user.strip(), nuevo_pass.strip(), nuevo_rol), commit=True)
-                        st.success(f"🎉 ¡Usuario '{nuevo_user}' registrado exitosamente como {nuevo_rol}!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error("⚠️ Error: El nombre de usuario ya existe o hubo un fallo en la base de datos.")
-                        
-    with col_u2:
-        st.subheader("📋 Usuarios Registrados")
-        users = ejecutar_query("SELECT id, usuario, rol FROM usuarios ORDER BY id ASC", fetch=True)
-        if users:
-            df_u = pd.DataFrame(users, columns=["ID", "Usuario", "Rol"])
-            st.table(df_u)
-        else:
-            st.info("No hay usuarios registrados.")
+        btn_crear_u = st.form_submit_button("💾 Crear Usuario", type="primary")
+        
+        if btn_crear_u:
+            if not u_nombre or not u_pass:
+                st.error("⚠️ Todos los campos son obligatorios.")
+            else:
+                try:
+                    ejecutar_query(
+                        "INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)",
+                        (u_nombre.strip(), u_pass.strip(), u_rol),
+                        commit=True
+                    )
+                    st.toast(f"✅ Usuario '{u_nombre}' registrado con éxito", icon="👤")
+                    st.rerun()
+                except Exception:
+                    st.error("⚠️ El nombre de usuario ya existe en el sistema.")
+
+    st.markdown("---")
+    st.subheader("📋 Usuarios Registrados")
+    users = ejecutar_query("SELECT id, usuario, rol FROM usuarios ORDER BY id ASC", fetch=True)
+    if users:
+        df_u = pd.DataFrame(users, columns=["ID", "Usuario", "Rol"])
+        st.dataframe(df_u, use_container_width=True)
