@@ -645,6 +645,16 @@ def modal_agregar_producto_compra(lista_productos):
 # BARRA LATERAL MULTIPESTAÑA REESTRUCTURADA Y OPTIMIZADA
 # =====================================================================
 
+import streamlit as st
+
+# ⚠️ Esta DEBE ser la primera instrucción de Streamlit en tu archivo principal (app.py / main.py)
+
+st.set_page_config(
+    page_title="Nombre de tu Negocio",  # Nombre que aparecerá en la pestaña / app
+    page_icon="assets/logo.png",       # Ruta a la imagen de tu logo (PNG, JPG o ICO)
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 # --- 1. CABECERA LATERAL (Alertas y Datos de Usuario) ---
 # Usamos columnas con proporción para empujar el botón de alerta a la derecha
 col_info, col_alerta = st.sidebar.columns([3, 1])
