@@ -650,10 +650,15 @@ nombre_u = st.session_state.usuario_nombre or 'Usuario'
 rol_u = (st.session_state.usuario_rol or '').upper()
 st.sidebar.markdown(f"<p style='font-size: 0.8rem; color: #666; margin-bottom: 2px;'>👤 <b>usuario:</b> {nombre_u} ({rol_u})</p>", unsafe_allow_html=True)
 
-# 2. BOTÓN DE ALERTAS Y LOGO
-if total_alertas > 0:
-    if st.sidebar.button("🚨 Alertas", key="btn_alerta_icono", help=f"Hay {total_alertas} artículo(s) con stock bajo o agotado"):
-        mostrar_modal_alertas()
+# 2. BOTÓN DE PAJARITA SOLA CON TOOLTIP AL SOBREPONER EL MOUSE Y BOTÓN DE ALERTAS
+col_paj, col_ale = st.sidebar.columns([1, 4])
+with col_paj:
+    st.button("🎀", key="btn_pajarita_icono", help="Accesos e Identificador de Marca")
+
+with col_ale:
+    if total_alertas > 0:
+        if st.button("🚨 Alertas", key="btn_alerta_icono", help=f"Hay {total_alertas} artículo(s) con stock bajo o agotado", use_container_width=True):
+            mostrar_modal_alertas()
 
 if st.session_state.logo_bytes:
     st.sidebar.image(base64.b64decode(st.session_state.logo_bytes), use_container_width=True)
@@ -664,12 +669,12 @@ st.sidebar.markdown("---")
 
 # 3. MENÚ DE NAVEGACIÓN PRINCIPAL
 opciones_menu = [
-    ("buscar", "🔍 Buscar Producto"),
-    ("registrar", "📦 Registrar Productos"),
-    ("venta", "📝 Registrar Venta"),
-    ("compra", "📥 Ingresar Compra"),
-    ("reportes", "📈 Reportes y Finanzas"),
-    ("config", "⚙️ Configuración")
+    ("buscar", "Buscar Producto"),
+    ("registrar", "Registrar Productos"),
+    ("venta", "Registrar Venta"),
+    ("compra", "Ingresar Compra"),
+    ("reportes", "Reportes y Finanzas"),
+    ("config", "Configuración")
 ]
 
 if st.session_state.usuario_rol == "admin":
