@@ -645,15 +645,6 @@ def modal_agregar_producto_compra(lista_productos):
 # BARRA LATERAL MULTIPESTAÑA REESTRUCTURADA Y OPTIMIZADA
 # =====================================================================
 
-# 1. USUARIO ARRIBA DE TODO (DISCRETO Y EN LETRAS)
-nombre_u = st.session_state.usuario_nombre or 'Usuario'
-rol_u = (st.session_state.usuario_rol or '').upper()
-st.sidebar.markdown(f"<p style='font-size: 0.8rem; color: #666; margin-bottom: 2px;'>👤 <b>usuario:</b> {nombre_u} ({rol_u})</p>", unsafe_allow_html=True)
-
-# 2. BOTÓN DE PAJARITA SOLA CON TOOLTIP AL SOBREPONER EL MOUSE Y BOTÓN DE ALERTAS
-import base64
-import streamlit as st
-
 # --- 1. CABECERA LATERAL (Alertas y Datos de Usuario) ---
 # Usamos columnas con proporción para empujar el botón de alerta a la derecha
 col_info, col_alerta = st.sidebar.columns([3, 1])
@@ -661,7 +652,7 @@ col_info, col_alerta = st.sidebar.columns([3, 1])
 with col_info:
     # Mostramos el usuario/rol asegurando que no se sobreponga
     rol_actual = st.session_state.get("usuario_rol", "admin").capitalize()
-    st.markdown(f"**👤 Usuario:** {rol_actual}")
+    st.markdown(f"**Usuario:** {rol_actual}")
 
 with col_alerta:
     # Botón de alerta pequeño en la esquinita derecha
@@ -674,11 +665,9 @@ if st.session_state.get("logo_bytes"):
     st.sidebar.image(base64.b64decode(st.session_state.logo_bytes), use_container_width=True)
 
 st.sidebar.markdown(
-    f"<h3 style='text-align: center; margin-top: 5px; margin-bottom: 10px; font-size: 1.1rem;'>🛡️ {st.session_state.nombre_negocio}</h3>", 
+    f"<h3 style='text-align: center; margin-top: 5px; margin-bottom: 10px; font-size: 1.1rem;'>{st.session_state.nombre_negocio}</h3>", 
     unsafe_allow_html=True
 )
-
-st.sidebar.markdown("---")
 
 # --- 3. MENÚ DE NAVEGACIÓN PRINCIPAL ---
 opciones_menu = [
@@ -702,7 +691,6 @@ for id_pantalla, nombre_boton in opciones_menu:
         st.rerun()
 
 # --- 4. BOTÓN DE SALIDA / PUERTITA (Al final de la barra lateral) ---
-st.sidebar.markdown("---")
 
 # Colocamos la puertita en la esquina inferior mediante una columna
 col_vacia, col_puerta = st.sidebar.columns([3, 1])
@@ -713,18 +701,6 @@ with col_puerta:
         st.rerun()
 
 menu_url = st.session_state.pantalla_activa
-
-# 4. BOTÓN CERRAR SESIÓN ABAJO DE TODO (PUERTA CON FLECHA DISCRETA)
-st.sidebar.markdown("---")
-col_cs1, col_cs2 = st.columns([1, 4])
-with col_cs1:
-    if st.button("🚪", key="btn_logout_sidebar", help="Cerrar Sesión"):
-        st.session_state.logged_in = False
-        st.session_state.usuario_rol = None
-        st.session_state.usuario_nombre = None
-        st.session_state.fecha_login = None
-        st.query_params.clear()
-        st.rerun()
 
 # TITULO PRINCIPAL DE LA PÁGINA
 st.title(f"💊 Kardex - {st.session_state.nombre_negocio}")
