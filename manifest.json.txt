@@ -1,0 +1,16 @@
+{
+  "short_name": "HOME MEDIC",
+  "name": "HOME MEDIC - Cuidamos Tu Salud",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "display": "standalone"
+}
