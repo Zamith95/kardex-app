@@ -13,46 +13,49 @@ st.set_page_config(
     page_title="HOME MEDIC",
     page_icon="logo.png",  # Nombre exacto de la imagen de tu logo en la raíz según tu GitHub
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"  # Se ajustó a 'auto' para mejor respuesta en móviles
 )
 
-# --- INYECCIÓN SEGURA DE JAVASCRIPT PARA TOUCH SCROLL Y AUTO-COLAPSAR SIDEBAR EN CELULARES ---
+# --- INYECCIÓN SEGURA DE JAVASCRIPT PARA OCULTAR LA BARRA LATERAL AL TOCAR CUALQUIER OPCIÓN EN MÓVILES ---
 components.html(
     """
     <script>
-    const collapseSidebar = () => {
-        if (window.parent.innerWidth < 768) {
-            const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
-            const closeButton = window.parent.document.querySelector('[data-testid="stSidebarCollapseButton"]');
-            if (sidebar && closeButton && sidebar.getAttribute('aria-expanded') === 'true') {
-                closeButton.click();
-            }
-        }
-    };
+    (function() {
+        const parentDoc = window.parent.document;
 
-    const attachSidebarListeners = () => {
-        const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
-        if (sidebar) {
-            // Permitir que los eventos touch pasen libremente
-            sidebar.style.pointerEvents = "auto";
-            
-            // Detectar clics y toques en cualquier botón del menú dentro de la barra lateral
-            const sidebarButtons = sidebar.querySelectorAll('button');
-            sidebarButtons.forEach(button => {
-                if (!button.dataset.listenerAttached) {
-                    button.addEventListener('click', () => {
-                        setTimeout(collapseSidebar, 300);
-                    });
-                    button.dataset.listenerAttached = "true";
+        // Función para colapsar la barra lateral en pantallas pequeñas/móviles
+        const forceCollapseSidebar = () => {
+            if (window.parent.innerWidth <= 850) {
+                const sidebar = parentDoc.querySelector('[data-testid="stSidebar"]');
+                const isExpanded = sidebar && sidebar.getAttribute('aria-expanded') === 'true';
+                
+                if (isExpanded) {
+                    // Seleccionar el botón oficial de colapsar sidebar de Streamlit
+                    const closeBtn = parentDoc.querySelector('[data-testid="stSidebarCollapseButton"] button') || 
+                                     parentDoc.querySelector('[data-testid="stSidebarCollapseButton"]');
+                    if (closeBtn) {
+                        closeBtn.click();
+                    }
                 }
-            });
-        }
-    };
+            }
+        };
 
-    // Ejecutar al cargar y observar cambios dinámicos en la barra lateral
-    attachSidebarListeners();
-    const observer = new MutationObserver(attachSidebarListeners);
-    observer.observe(window.parent.document.body, { childList: true, subtree: true });
+        // Escuchar clics de manera global en el documento padre
+        parentDoc.addEventListener('click', function(e) {
+            const sidebar = parentDoc.querySelector('[data-testid="stSidebar"]');
+            
+            // Comprobar si el clic o toque ocurrió dentro del sidebar
+            if (sidebar && sidebar.contains(e.target)) {
+                const clickedButton = e.target.closest('button');
+                
+                // Si se presionó un botón que NO es el botón propio de cerrar/abrir la barra
+                if (clickedButton && !clickedButton.closest('[data-testid="stSidebarCollapseButton"]')) {
+                    // Pequeño retardo para dar tiempo a registrar la selección antes de ocultar
+                    setTimeout(forceCollapseSidebar, 150);
+                }
+            }
+        }, true);
+    })();
     </script>
     """,
     height=0,
@@ -664,7 +667,7 @@ def modal_agregar_producto_compra(lista_productos):
         
         if tot_unidades_compra > 0 and costo_total_item > 0:
             costo_u_calc = costo_total_item / tot_unidades_compra
-            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculated:** S/. {costo_u_calc:.4f} por unidad.")
+            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculado:** S/. {costo_u_calc:.4f} por unidad.")
             
         st.markdown("---")
         col_m_btn1, col_m_btn2 = st.columns([1, 1])
@@ -698,16 +701,13 @@ def modal_agregar_producto_compra(lista_productos):
 # =====================================================================
 
 # --- 1. CABECERA LATERAL (Alertas y Datos de Usuario) ---
-# Usamos columnas con proporción para empujar el botón de alerta a la derecha
 col_info, col_alerta = st.sidebar.columns([3, 1])
 
 with col_info:
-    # Mostramos el usuario/rol asegurando que no se sobreponga
     rol_actual = st.session_state.get("usuario_rol", "admin").capitalize()
     st.markdown(f"**Usuario:** {rol_actual}")
 
 with col_alerta:
-    # Botón de alerta pequeño en la esquinita derecha
     if total_alertas > 0:
         if st.button("🚨", key="btn_alerta_icono", help=f"Hay {total_alertas} artículo(s) con stock bajo o agotado", use_container_width=False):
             mostrar_modal_alertas()
@@ -742,12 +742,10 @@ for id_pantalla, nombre_boton in opciones_menu:
         st.session_state.pantalla_activa = id_pantalla
         st.rerun()
 
-# --- 4. BOTÓN DE SALIDA / PUERTITA (Al final de la barra lateral) ---
-# Colocamos la puertita en la esquina inferior mediante una columna
+# --- 4. BOTÓN DE SALIDA / PUERTITA ---
 col_vacia, col_puerta = st.sidebar.columns([3, 1])
 with col_puerta:
     if st.button("🚪", key="btn_cerrar_sesion", help="Cerrar Sesión", use_container_width=False):
-        # Lógica para cerrar sesión
         st.session_state.clear()
         st.rerun()
 
@@ -1637,7 +1635,7 @@ elif menu_url == "reportes":
             with col_v1:
                 st.metric(label="Total Recaudado por Ventas", value=f"S/. {total_v:,.2f}")
             with col_v2:
-                st.metric(label="Capital de Costo Recupeado", value=f"S/. {total_c:,.2f}")
+                st.metric(label="Capital de Costo Recuperado", value=f"S/. {total_c:,.2f}")
             with col_v3:
                 st.metric(label="Ganancia Neta Real", value=f"S/. {total_g:,.2f}")
                 
