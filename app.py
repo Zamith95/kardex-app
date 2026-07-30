@@ -6,6 +6,13 @@ import pandas as pd
 import psycopg2
 import psycopg2.extras
 import openpyxl
+import urllib.parse
+
+# Mantenemos try/except para pytz para prevenir caídas de entorno
+try:
+    import pytz
+except ImportError:
+    pytz = None
 
 # --- DEBE SER LA PRIMERA LÍNEA DE STREAMLIT EN TU CÓDIGO ---
 st.set_page_config(
@@ -280,7 +287,7 @@ def ejecutar_query(query, params=None, commit=False, fetch=False):
             
     return resultado
 
-# OPTIMIZACIÓN DE VELOCIDAD: Caché mantendida en memoria
+# OPTIMIZACIÓN DE VELOCIDAD: Caché mantenida en memoria
 @st.cache_data
 def cargar_productos_db():
     query = "SELECT id_producto, nombre, marca, laboratorio, presentacion, stock_actual_unidades, precio_costo_unidad, precio_venta_unidad, precio_venta_blister, fecha_vencimiento, unidades_por_caja, unidades_por_blister FROM productos ORDER BY nombre ASC"
@@ -305,10 +312,12 @@ def cargar_productos_db():
 # =====================================================================
 # INICIALIZACIÓN DE SESSION STATE Y CONFIGURACIÓN PERSISTENTE DIARIA (ZONA PERÚ)
 # =====================================================================
-import pytz
+if pytz:
+    zona_horaria = pytz.timezone("America/Lima")
+    fecha_hoy_local = datetime.now(zona_horaria).date()
+else:
+    fecha_hoy_local = datetime.now().date()
 
-zona_horaria = pytz.timezone("America/Lima")
-fecha_hoy_local = datetime.now(zona_horaria).date()
 fecha_hoy_str = fecha_hoy_local.strftime('%Y-%m-%d')
 
 # PERSISTENCIA VIA COOKIES / PARÁMETROS NAVEGADOR AL REFRESCAR
@@ -848,7 +857,6 @@ if menu_url == "buscar":
                 st.markdown(f"- **Venta estimada si vendes todo:** S/. {retorno_esperado_este_prod:.2f}")
                 
                 st.markdown("---")
-                import urllib.parse
                 busqueda_query = f"site:vademecum.es {p_sel['marca']} {p_sel['nombre']}"
                 url_vademecum = f"https://www.google.com/search?q={urllib.parse.quote(busqueda_query)}"
                 
