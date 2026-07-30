@@ -280,7 +280,7 @@ def ejecutar_query(query, params=None, commit=False, fetch=False):
             
     return resultado
 
-# OPTIMIZACIÓN DE VELOCIDAD: Se elimina el TTL para mantener el caché ultra rápido en memoria
+# OPTIMIZACIÓN DE VELOCIDAD: Caché mantendida en memoria
 @st.cache_data
 def cargar_productos_db():
     query = "SELECT id_producto, nombre, marca, laboratorio, presentacion, stock_actual_unidades, precio_costo_unidad, precio_venta_unidad, precio_venta_blister, fecha_vencimiento, unidades_por_caja, unidades_por_blister FROM productos ORDER BY nombre ASC"
@@ -382,7 +382,7 @@ if "reset_fecha_version" not in st.session_state:
     st.session_state.reset_fecha_version = 0
 
 # =====================================================================
-# MOTOR DE ESTILOS CSS DINÁMICOS Y TARJETAS DE PRECIO
+# MOTOR DE ESTILOS CSS DINÁMICOS Y TARJETAS DE PRECIO (OPTIMIZADO)
 # =====================================================================
 config_temas = {
     "Celeste Pastel": {
@@ -436,16 +436,16 @@ else:
 
 style_css = f"""
 <style>
-/* BLOQUEO DEL PULL-TO-REFRESH EN MÓVILES Y SCROLL SUAVE */
-html, body {{
+/* 1. SOLUCIÓN AL PULL-TO-REFRESH EN MÓVILES (Desactiva la recarga al deslizar hacia abajo) */
+html, body, .stApp, .main, [data-testid="stAppViewContainer"] {{
     overscroll-behavior-y: none !important;
     overscroll-behavior-x: none !important;
+    {style_bg}
 }}
 
-.stApp {{
-    {style_bg}
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
+/* Evita rebotar al hacer scroll en contenedores internos */
+div, section, table, .stDataFrame {{
+    overscroll-behavior-y: contain !important;
 }}
 
 .main .block-container {{
@@ -465,7 +465,6 @@ section[data-testid="stSidebar"] {{
     color: {tema_actual['sidebar_text']} !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
-    overscroll-behavior-y: contain !important;
 }}
 
 section[data-testid="stSidebar"] > div:first-child {{
@@ -507,22 +506,25 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
 }}
 </style>
 
+<!-- 2. SOLUCIÓN PARA AUTO-OCULTAR BARRA LATERAL EN MÓVILES AL HACER CLIC -->
 <script>
-// AUTO-OCULTAR BARRA LATERAL EN DISPOSITIVOS MÓVILES AL SELECCIONAR
 document.addEventListener('click', function(e) {{
     const isMobile = window.innerWidth <= 768;
     if (isMobile) {{
-        const btn = e.target.closest('section[data-testid="stSidebar"] button');
-        if (btn) {{
+        const isSidebarButton = e.target.closest('section[data-testid="stSidebar"] button');
+        if (isSidebarButton) {{
             setTimeout(() => {{
-                const closeBtn = window.parent.document.querySelector('button[aria-label="Close"]');
+                // Simula clic en el botón de cerrar la barra lateral de Streamlit
+                const closeBtn = parent.document.querySelector('button[data-testid="stSidebarCollapseButton"]') || 
+                                 parent.document.querySelector('section[data-testid="stSidebar"] button[aria-label="Close"]') ||
+                                 document.querySelector('button[data-testid="stSidebarCollapseButton"]');
                 if (closeBtn) {{
                     closeBtn.click();
                 }}
-            }}, 200);
+            }}, 150);
         }}
     }}
-}});
+}}, true);
 </script>
 """
 st.markdown(style_css, unsafe_allow_html=True)
