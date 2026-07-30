@@ -303,9 +303,13 @@ def cargar_productos_db():
     return productos
 
 # =====================================================================
-# INICIALIZACIÓN DE SESSION STATE Y CONFIGURACIÓN PERSISTENTE DIARIA
+# INICIALIZACIÓN DE SESSION STATE Y CONFIGURACIÓN PERSISTENTE DIARIA (ZONA PERÚ)
 # =====================================================================
-fecha_hoy_str = datetime.today().strftime('%Y-%m-%d')
+import pytz
+
+zona_horaria = pytz.timezone("America/Lima")
+fecha_hoy_local = datetime.now(zona_horaria).date()
+fecha_hoy_str = fecha_hoy_local.strftime('%Y-%m-%d')
 
 # PERSISTENCIA VIA COOKIES / PARÁMETROS NAVEGADOR AL REFRESCAR
 cookie_params = st.query_params
@@ -326,7 +330,7 @@ if "auth_user" in cookie_params and "auth_date" in cookie_params:
 if "fecha_login" not in st.session_state:
     st.session_state.fecha_login = None
 
-# Si cambia el día, forzamos re-autenticación automática de 1 vez al día
+# Si cambia el día (hora Perú), forzamos re-autenticación de 1 vez al día
 if st.session_state.fecha_login != fecha_hoy_str:
     st.session_state.logged_in = False
     st.session_state.usuario_rol = None
