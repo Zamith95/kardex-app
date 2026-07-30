@@ -436,10 +436,16 @@ else:
 
 style_css = f"""
 <style>
-/* PREVENIR PULL-TO-REFRESH EN MÓVILES */
-html, body, .stApp {{
-    overscroll-behavior-y: contain !important;
+/* BLOQUEO DEL PULL-TO-REFRESH EN MÓVILES Y SCROLL SUAVE */
+html, body {{
+    overscroll-behavior-y: none !important;
+    overscroll-behavior-x: none !important;
+}}
+
+.stApp {{
     {style_bg}
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
 }}
 
 .main .block-container {{
@@ -459,6 +465,7 @@ section[data-testid="stSidebar"] {{
     color: {tema_actual['sidebar_text']} !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-y: contain !important;
 }}
 
 section[data-testid="stSidebar"] > div:first-child {{
