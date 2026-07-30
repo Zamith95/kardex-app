@@ -312,12 +312,12 @@ def cargar_productos_db():
 # =====================================================================
 # INICIALIZACIÓN DE SESSION STATE Y CONFIGURACIÓN PERSISTENTE DIARIA (ZONA PERÚ)
 # =====================================================================
-if pytz:
-    zona_horaria = pytz.timezone("America/Lima")
-    fecha_hoy_local = datetime.now(zona_horaria).date()
-else:
-    fecha_hoy_local = datetime.now().date()
+def obtener_fecha_hoy():
+    if pytz:
+        return datetime.now(pytz.timezone("America/Lima")).date()
+    return datetime.now().date()
 
+fecha_hoy_local = obtener_fecha_hoy()
 fecha_hoy_str = fecha_hoy_local.strftime('%Y-%m-%d')
 
 # PERSISTENCIA VIA COOKIES / PARÁMETROS NAVEGADOR AL REFRESCAR
@@ -655,7 +655,7 @@ def modal_agregar_producto_compra(lista_productos):
             
         col_venc, col_pagado = st.columns(2)
         with col_venc:
-            fecha_venc_lote = st.date_input("Fecha Vencimiento del Lote", datetime.today() + timedelta(days=365), format="DD/MM/YYYY")
+            fecha_venc_lote = st.date_input("Fecha Vencimiento del Lote", obtener_fecha_hoy() + timedelta(days=365), format="DD/MM/YYYY")
         with col_pagado:
             costo_total_item = st.number_input("Monto Total Pagado por este Producto (S/.)", min_value=0.0, value=0.0, step=0.5)
             
@@ -742,6 +742,7 @@ for id_pantalla, nombre_boton in opciones_menu:
 col_vacia, col_puerta = st.sidebar.columns([3, 1])
 with col_puerta:
     if st.button("🚪", key="btn_cerrar_sesion", help="Cerrar Sesión", use_container_width=False):
+        st.query_params.clear()
         st.session_state.clear()
         st.rerun()
 
@@ -892,7 +893,7 @@ if menu_url == "buscar":
                             idx_pres = opciones_pres.index(p_sel['presentacion']) if p_sel['presentacion'] in opciones_pres else 0
                             edit_presentacion = st.selectbox("Presentación del Producto", opciones_pres, index=idx_pres)
                             
-                            fecha_defecto = p_sel['fecha_vencimiento'] if p_sel['fecha_vencimiento'] else datetime.today().date()
+                            fecha_defecto = p_sel['fecha_vencimiento'] if p_sel['fecha_vencimiento'] else obtener_fecha_hoy()
                             edit_vence = st.date_input("Fecha de Vencimiento", value=fecha_defecto, format="DD/MM/YYYY")
                             
                             edit_stock = st.number_input("Stock Total (unidades)", min_value=0, value=int(p_sel['stock_actual_unidades']))
@@ -935,7 +936,7 @@ if menu_url == "buscar":
 
             with col_der:
                 st.subheader("📈 Rendimiento de Ventas")
-                hoy = datetime.today().date()
+                hoy = obtener_fecha_hoy()
                 inicio_semana = hoy - timedelta(days=hoy.weekday())
                 inicio_mes = hoy.replace(day=1)
                 
@@ -1036,7 +1037,7 @@ if menu_url == "buscar":
                 worksheet = writer.sheets["Stock Actual"]
                 
                 worksheet["A1"] = f"REPORTE DE INVENTARIO Y STOCK ACTUAL - {st.session_state.nombre_negocio.upper()}"
-                worksheet["A2"] = f"Fecha de emision: {datetime.today().strftime('%d/%m/%Y %H:%M')}"
+                worksheet["A2"] = f"Fecha de emision: {obtener_fecha_hoy().strftime('%d/%m/%Y')} {datetime.now().strftime('%H:%M')}"
                 worksheet["A3"] = f"Total Capital Invertido en Almacén: S/. {total_invertido_capital:,.2f}"
                 
                 for col in worksheet.columns:
@@ -1045,7 +1046,7 @@ if menu_url == "buscar":
                     worksheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
                     
             excel_inv_data = output_inv.getvalue()
-            pdf_data_inv = generar_pdf_bonito(df_inventario, "INVENTARIO Y STOCK DE ALMACÉN", f"Empresa: {st.session_state.nombre_negocio} | Fecha y Hora de Reporte: {datetime.today().strftime('%d/%m/%Y %H:%M')}", es_inventario=True)
+            pdf_data_inv = generar_pdf_bonito(df_inventario, "INVENTARIO Y STOCK DE ALMACÉN", f"Empresa: {st.session_state.nombre_negocio} | Fecha y Hora de Reporte: {obtener_fecha_hoy().strftime('%d/%m/%Y')} {datetime.now().strftime('%H:%M')}", es_inventario=True)
 
             st.write("")
             col_cen1, col_cen2, col_cen3 = st.columns([2, 1, 2])
@@ -1054,14 +1055,14 @@ if menu_url == "buscar":
                     st.download_button(
                         label="Excel (.xlsx)",
                         data=excel_inv_data,
-                        file_name=f"Inventario_Actual_{st.session_state.nombre_negocio.replace(' ', '_')}_{datetime.today().strftime('%Y-%m-%d')}.xlsx",
+                        file_name=f"Inventario_Actual_{st.session_state.nombre_negocio.replace(' ', '_')}_{obtener_fecha_hoy().strftime('%Y-%m-%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
                     st.download_button(
                         label="PDF (.pdf)",
                         data=pdf_data_inv,
-                        file_name=f"Inventario_Actual_{st.session_state.nombre_negocio.replace(' ', '_')}_{datetime.today().strftime('%Y-%m-%d')}.pdf",
+                        file_name=f"Inventario_Actual_{st.session_state.nombre_negocio.replace(' ', '_')}_{obtener_fecha_hoy().strftime('%Y-%m-%d')}.pdf",
                         mime="application/pdf",
                         use_container_width=True
                     )
@@ -1246,7 +1247,7 @@ elif menu_url == "venta":
     with col_fecha:
         fecha_salida = st.date_input(
             "📅 Fecha del Movimiento / Registro:", 
-            value=datetime.today().date(), 
+            value=obtener_fecha_hoy(), 
             format="DD/MM/YYYY",
             help="Puedes cambiar esta fecha si vas a ingresar ventas pasadas. Al procesar la boleta, volverá a la fecha de hoy.",
             key=key_fecha_dinamica
@@ -1457,7 +1458,7 @@ elif menu_url == "compra":
         with col_c_fecha:
             fecha_ingreso_compra = st.date_input(
                 "📅 Fecha de Compra", 
-                value=datetime.today().date(), 
+                value=obtener_fecha_hoy(), 
                 format="DD/MM/YYYY",
                 key=f"compra_fecha_{key_v}",
                 disabled=disabled_mode
@@ -1588,21 +1589,21 @@ elif menu_url == "reportes":
         st.subheader("💵 Reporte Exclusivo de Ventas y Ganancias")
         
         filtro_tiempo = st.selectbox("Selecciona Periodo:", ["Hoy", "Esta Semana", "Este Mes", "Rango Personalizado"], key="f_ventas_exc")
-        fecha_inicio = datetime.today().date()
-        fecha_fin = datetime.today().date()
+        fecha_inicio = obtener_fecha_hoy()
+        fecha_fin = obtener_fecha_hoy()
         
         if filtro_tiempo == "Hoy":
-            fecha_inicio = datetime.today().date()
+            fecha_inicio = obtener_fecha_hoy()
         elif filtro_tiempo == "Esta Semana":
-            fecha_inicio = datetime.today().date() - timedelta(days=datetime.today().weekday())
+            fecha_inicio = obtener_fecha_hoy() - timedelta(days=obtener_fecha_hoy().weekday())
         elif filtro_tiempo == "Este Mes":
-            fecha_inicio = datetime.today().date().replace(day=1)
+            fecha_inicio = obtener_fecha_hoy().replace(day=1)
         elif filtro_tiempo == "Rango Personalizado":
             col1, col2 = st.columns(2)
             with col1:
-                fecha_inicio = st.date_input("Desde", datetime.today() - timedelta(days=30), format="DD/MM/YYYY", key="ve_desde")
+                fecha_inicio = st.date_input("Desde", obtener_fecha_hoy() - timedelta(days=30), format="DD/MM/YYYY", key="ve_desde")
             with col2:
-                fecha_fin = st.date_input("Hasta", datetime.today(), format="DD/MM/YYYY", key="ve_hasta")
+                fecha_fin = st.date_input("Hasta", obtener_fecha_hoy(), format="DD/MM/YYYY", key="ve_hasta")
 
         query_v = """
             SELECT m.fecha, p.nombre, p.marca, p.presentacion, 
@@ -1650,7 +1651,7 @@ elif menu_url == "reportes":
                 
                 worksheet["A1"] = f"REPORTE DE VENTAS - {st.session_state.nombre_negocio.upper()}"
                 worksheet["A2"] = f"Periodo: {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')}"
-                worksheet["A3"] = f"Generado el: {datetime.today().strftime('%d/%m/%Y %H:%M')}"
+                worksheet["A3"] = f"Generado el: {obtener_fecha_hoy().strftime('%d/%m/%Y')} {datetime.now().strftime('%H:%M')}"
                 
                 for col in worksheet.columns:
                     max_len = max(len(str(cell.value or '')) for cell in col)
@@ -1694,7 +1695,7 @@ elif menu_url == "reportes":
         with col_c_p1:
             periodo_compra = st.radio("Filtro de tiempo para compras:", ["Esta Semana", "Este Mes", "Este Año", "Personalizado"], horizontal=True)
         
-        hoy = datetime.today().date()
+        hoy = obtener_fecha_hoy()
         if periodo_compra == "Esta Semana":
             f_inicio_c = hoy - timedelta(days=hoy.weekday())
             f_fin_c = hoy
@@ -1744,7 +1745,7 @@ elif menu_url == "reportes":
                 
                 worksheet["A1"] = f"REPORTE DE COMPRAS E INVERSIÓN - {st.session_state.nombre_negocio.upper()}"
                 worksheet["A2"] = f"Periodo: {f_inicio_c.strftime('%d/%m/%Y')} al {f_fin_c.strftime('%d/%m/%Y')}"
-                worksheet["A3"] = f"Generado el: {datetime.today().strftime('%d/%m/%Y %H:%M')}"
+                worksheet["A3"] = f"Generado el: {obtener_fecha_hoy().strftime('%d/%m/%Y')} {datetime.now().strftime('%H:%M')}"
                 
                 for col in worksheet.columns:
                     max_len = max(len(str(cell.value or '')) for cell in col)
@@ -1785,21 +1786,21 @@ elif menu_url == "reportes":
         st.subheader("🔄 Historial Completo de Movimientos y Entradas/Salidas")
         
         filtro_tiempo_m = st.selectbox("Selecciona Periodo:", ["Hoy", "Esta Semana", "Este Mes", "Rango Personalizado"], key="f_movs")
-        fecha_inicio_m = datetime.today().date()
-        fecha_fin_m = datetime.today().date()
+        fecha_inicio_m = obtener_fecha_hoy()
+        fecha_fin_m = obtener_fecha_hoy()
         
         if filtro_tiempo_m == "Hoy":
-            fecha_inicio_m = datetime.today().date()
+            fecha_inicio_m = obtener_fecha_hoy()
         elif filtro_tiempo_m == "Esta Semana":
-            fecha_inicio_m = datetime.today().date() - timedelta(days=datetime.today().weekday())
+            fecha_inicio_m = obtener_fecha_hoy() - timedelta(days=obtener_fecha_hoy().weekday())
         elif filtro_tiempo_m == "Este Mes":
-            fecha_inicio_m = datetime.today().date().replace(day=1)
+            fecha_inicio_m = obtener_fecha_hoy().replace(day=1)
         elif filtro_tiempo_m == "Rango Personalizado":
             col1, col2 = st.columns(2)
             with col1:
-                fecha_inicio_m = st.date_input("Desde", datetime.today() - timedelta(days=30), format="DD/MM/YYYY", key="m_desde")
+                fecha_inicio_m = st.date_input("Desde", obtener_fecha_hoy() - timedelta(days=30), format="DD/MM/YYYY", key="m_desde")
             with col2:
-                fecha_fin_m = st.date_input("Hasta", datetime.today(), format="DD/MM/YYYY", key="m_hasta")
+                fecha_fin_m = st.date_input("Hasta", obtener_fecha_hoy(), format="DD/MM/YYYY", key="m_hasta")
 
         query_m = """
             SELECT m.fecha, m.tipo_movimiento, p.nombre, p.marca, m.unidades, m.blisters, m.monto_total, m.costo_total_capital, m.ingreso_neto,
@@ -1844,7 +1845,7 @@ elif menu_url == "reportes":
                 
                 worksheet["A1"] = f"REPORTE DE MOVIMIENTOS - {st.session_state.nombre_negocio.upper()}"
                 worksheet["A2"] = f"Periodo: {fecha_inicio_m.strftime('%d/%m/%Y')} al {fecha_fin_m.strftime('%d/%m/%Y')}"
-                worksheet["A3"] = f"Generado el: {datetime.today().strftime('%d/%m/%Y %H:%M')}"
+                worksheet["A3"] = f"Generado el: {obtener_fecha_hoy().strftime('%d/%m/%Y')} {datetime.now().strftime('%H:%M')}"
                 
                 for col in worksheet.columns:
                     max_len = max(len(str(cell.value or '')) for cell in col)
@@ -1886,7 +1887,7 @@ elif menu_url == "reportes":
         
         dias_limite = st.slider("Mostrar productos que vencerán en los próximos (días):", min_value=15, max_value=365, value=90, step=15)
         
-        fecha_actual = datetime.today().date()
+        fecha_actual = obtener_fecha_hoy()
         fecha_limite = fecha_actual + timedelta(days=dias_limite)
         
         query_venc = """
