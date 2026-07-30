@@ -436,9 +436,12 @@ else:
 
 style_css = f"""
 <style>
-.stApp {{
+/* EVITAR EL PULL-TO-REFRESH EN DISPOSITIVOS MÓVILES */
+html, body, .stApp {{
+    overscroll-behavior-y: contain !important;
     {style_bg}
 }}
+
 .main .block-container {{
     background-color: {tema_actual['container_bg']} !important;
     color: {tema_actual['container_text']} !important;
@@ -496,6 +499,26 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
     color: #0D47A1;
 }}
 </style>
+
+<script>
+// AUTO-OCULTAR SIDEBAR EN MÓVILES TRAS SELECCIONAR UNA OPCIÓN
+window.addEventListener('load', function() {{
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {{
+        const buttons = window.parent.document.querySelectorAll('section[data-testid="stSidebar"] button');
+        buttons.forEach(button => {{
+            button.addEventListener('click', () => {{
+                setTimeout(() => {{
+                    const closeBtn = window.parent.document.querySelector('button[aria-label="Close"]');
+                    if (closeBtn) {{
+                        closeBtn.click();
+                    }}
+                }}, 300);
+            }});
+        }});
+    }}
+}});
+</script>
 """
 st.markdown(style_css, unsafe_allow_html=True)
 
