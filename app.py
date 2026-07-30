@@ -436,7 +436,7 @@ else:
 
 style_css = f"""
 <style>
-/* EVITAR EL PULL-TO-REFRESH EN DISPOSITIVOS MÓVILES */
+/* PREVENIR PULL-TO-REFRESH EN MÓVILES */
 html, body, .stApp {{
     overscroll-behavior-y: contain !important;
     {style_bg}
@@ -501,21 +501,19 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
 </style>
 
 <script>
-// AUTO-OCULTAR SIDEBAR EN MÓVILES TRAS SELECCIONAR UNA OPCIÓN
-window.addEventListener('load', function() {{
+// AUTO-OCULTAR BARRA LATERAL EN DISPOSITIVOS MÓVILES AL SELECCIONAR
+document.addEventListener('click', function(e) {{
     const isMobile = window.innerWidth <= 768;
     if (isMobile) {{
-        const buttons = window.parent.document.querySelectorAll('section[data-testid="stSidebar"] button');
-        buttons.forEach(button => {{
-            button.addEventListener('click', () => {{
-                setTimeout(() => {{
-                    const closeBtn = window.parent.document.querySelector('button[aria-label="Close"]');
-                    if (closeBtn) {{
-                        closeBtn.click();
-                    }}
-                }}, 300);
-            }});
-        }});
+        const btn = e.target.closest('section[data-testid="stSidebar"] button');
+        if (btn) {{
+            setTimeout(() => {{
+                const closeBtn = window.parent.document.querySelector('button[aria-label="Close"]');
+                if (closeBtn) {{
+                    closeBtn.click();
+                }}
+            }}, 200);
+        }}
     }}
 }});
 </script>
