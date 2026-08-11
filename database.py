@@ -1,4 +1,5 @@
 import streamlit as st
+import re
 from sqlalchemy import text
 
 # Conexión gestionada de Streamlit para PostgreSQL (Neon)
@@ -52,28 +53,29 @@ def ejecutar_consulta(query, params=None):
 def ejecutar_query(query, params=None, fetch=False, commit=False):
     conn = get_connection()
     
-    # Convertir tupla/lista de parámetros con %s a formato SQLAlchemy (:param_X)
+    # Formateo seguro de parámetros (%s -> :param_X) para SQLAlchemy
     formatted_params = {}
+    query_mod = query
+
     if isinstance(params, (tuple, list)):
-        query_mod = query
         for idx, val in enumerate(params):
             param_key = f"param_{idx}"
-            query_mod = query_mod.replace("%s", f":{param_key}", 1)
+            # Reemplazar exactamente la primera ocurrencia de %s que no sea escapada
+            query_mod = re.sub(r'%s', f":{param_key}", query_mod, count=1)
             formatted_params[param_key] = val
-        query = query_mod
     elif isinstance(params, dict):
         formatted_params = params
 
     if fetch:
         try:
-            df = conn.query(query, params=formatted_params if formatted_params else None, ttl=0)
+            df = conn.query(query_mod, params=formatted_params if formatted_params else None, ttl=0)
             if df is None or df.empty:
                 return []
             return [tuple(x) for x in df.to_numpy()]
         except Exception as e:
             st.cache_data.clear()
             try:
-                df = conn.query(query, params=formatted_params if formatted_params else None, ttl=0)
+                df = conn.query(query_mod, params=formatted_params if formatted_params else None, ttl=0)
                 if df is None or df.empty:
                     return []
                 return [tuple(x) for x in df.to_numpy()]
@@ -81,6 +83,9 @@ def ejecutar_query(query, params=None, fetch=False, commit=False):
                 st.error(f"Error en consulta SQL: {inner_e}")
                 return []
     else:
-        with conn.session as session:
-            session.execute(text(query), formatted_params)
-            session.commit()
+        try:
+            with conn.session as session:
+                session.execute(text(query_mod), formatted_params if formatted_params else {})
+                session.commit()
+        except Exception as e:
+            st.error(f"Error al ejecutar escritura SQL: {e}")
