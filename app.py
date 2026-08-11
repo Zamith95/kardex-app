@@ -328,6 +328,9 @@ fecha_hoy_str = fecha_hoy_local.strftime('%Y-%m-%d')
 # PERSISTENCIA VIA COOKIES / PARÁMETROS NAVEGADOR AL REFRESCAR
 cookie_params = st.query_params
 
+if "pantalla" in cookie_params:
+    st.session_state.pantalla_activa = cookie_params["pantalla"]
+
 if "auth_user" in cookie_params and "auth_date" in cookie_params:
     user_cookie = cookie_params.get("auth_user")
     date_cookie = cookie_params.get("auth_date")
@@ -591,7 +594,7 @@ if not st.session_state.logged_in:
 todos_productos = cargar_productos_db()
 
 # =====================================================================
-# SISTEMA DE ALERTAS EN VENTANA MODAL
+# SISTEMA DE ALERTAS EN VENTANA MODAL (CON SCROLL DE MOUSE CORREGIDO)
 # =====================================================================
 alertas_sin_stock = []
 alertas_tabletas_bajo = []
@@ -613,22 +616,24 @@ total_alertas = len(alertas_sin_stock) + len(alertas_tabletas_bajo) + len(alerta
 
 @st.dialog("🚨 NOTIFICACIONES DE STOCK CRÍTICO")
 def mostrar_modal_alertas():
-    if alertas_sin_stock:
-        st.error(f"🔴 **PRODUCTOS SIN STOCK (0 UNIDADES):** ({len(alertas_sin_stock)})")
-        for prod in alertas_sin_stock:
-            st.markdown(f"- **{prod}**")
-        st.markdown("---")
-        
-    if alertas_tabletas_bajo:
-        st.warning(f"🟡 **STOCK BAJO: TABLETAS / CÁPSULAS (≤ 10 u.):** ({len(alertas_tabletas_bajo)})")
-        for prod in alertas_tabletas_bajo:
-            st.markdown(f"- {prod}")
-        st.markdown("---")
-        
-    if alertas_otros_bajo:
-        st.warning(f"🟡 **STOCK BAJO: OTROS PRODUCTOS (< 3 u.):** ({len(alertas_otros_bajo)})")
-        for prod in alertas_otros_bajo:
-            st.markdown(f"- {prod}")
+    # Habilitado contenedor con scroll de ratón nativo
+    with st.container(height=400):
+        if alertas_sin_stock:
+            st.error(f"🔴 **PRODUCTOS SIN STOCK (0 UNIDADES):** ({len(alertas_sin_stock)})")
+            for prod in alertas_sin_stock:
+                st.markdown(f"- **{prod}**")
+            st.markdown("---")
+            
+        if alertas_tabletas_bajo:
+            st.warning(f"🟡 **STOCK BAJO: TABLETAS / CÁPSULAS (≤ 10 u.):** ({len(alertas_tabletas_bajo)})")
+            for prod in alertas_tabletas_bajo:
+                st.markdown(f"- {prod}")
+            st.markdown("---")
+            
+        if alertas_otros_bajo:
+            st.warning(f"🟡 **STOCK BAJO: OTROS PRODUCTOS (< 3 u.):** ({len(alertas_otros_bajo)})")
+            for prod in alertas_otros_bajo:
+                st.markdown(f"- {prod}")
 
 # =====================================================================
 # MODAL PARA AÑADIR PRODUCTO A LA COMPRA
@@ -721,7 +726,7 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 
-# --- 3. MENÚ DE NAVEGACIÓN PRINCIPAL ---
+# --- 3. MENÚ DE NAVEGACIÓN PRINCIPAL CON SOPORTE A PESTAÑAS Y CLIC DERECHO ---
 opciones_menu = [
     ("buscar", "Buscar Producto"),
     ("registrar", "Registrar Productos"),
@@ -734,13 +739,19 @@ opciones_menu = [
 if st.session_state.get("usuario_rol") == "admin":
     opciones_menu.append(("usuarios", "Gestionar Usuarios"))
 
-# Dibujar botones del menú
+# Dibujar botones de enlaces nativos HTML
 for id_pantalla, nombre_boton in opciones_menu:
     es_activo = (st.session_state.pantalla_activa == id_pantalla)
     tipo_btn = "primary" if es_activo else "secondary"
-    if st.sidebar.button(nombre_boton, key=f"nav_{id_pantalla}", use_container_width=True, type=tipo_btn):
-        st.session_state.pantalla_activa = id_pantalla
-        st.rerun()
+    
+    # st.page_link para permitir abrir en nueva pestaña con clic derecho
+    st.sidebar.page_link(
+        page="app.py",
+        label=nombre_boton,
+        query_params={"pantalla": id_pantalla},
+        icon="🔹" if es_activo else "▫️",
+        use_container_width=True
+    )
 
 # --- 4. BOTÓN DE SALIDA / PUERTITA ---
 col_vacia, col_puerta = st.sidebar.columns([3, 1])
@@ -889,30 +900,31 @@ if menu_url == "buscar":
                         confirmar_borrado = st.button("🗑️ Eliminar Producto", key="btn_delete", use_container_width=True)
                     
                     if st.session_state.editando_id == id_p:
-                        with st.form("edit_form_popup", clear_on_submit=True):
+                        # Formulario con keys fijas para evitar el parpadeo / recarga visual intermitente
+                        with st.form("edit_form_popup", clear_on_submit=False):
                             st.write("✏️ **Corregir Datos del Producto**")
                             
-                            edit_nombre = st.text_input("Nombre Comercial / Marca", value=p_sel['nombre'])
-                            edit_marca = st.text_input("Principio Activo", value=p_sel['marca'])
-                            edit_laboratorio = st.text_input("Laboratorio / Fabricante", value=p_sel['laboratorio'] or '')
+                            edit_nombre = st.text_input("Nombre Comercial / Marca", value=p_sel['nombre'], key=f"inp_edit_nom_{id_p}")
+                            edit_marca = st.text_input("Principio Activo", value=p_sel['marca'], key=f"inp_edit_mar_{id_p}")
+                            edit_laboratorio = st.text_input("Laboratorio / Fabricante", value=p_sel['laboratorio'] or '', key=f"inp_edit_lab_{id_p}")
                             
                             opciones_pres = ["Tableta / Cápsula", "Jarabe / Líquido", "Crema / Pomada", "Frasco / Pote", "Inyectable", "Unidad"]
                             idx_pres = opciones_pres.index(p_sel['presentacion']) if p_sel['presentacion'] in opciones_pres else 0
-                            edit_presentacion = st.selectbox("Presentación del Producto", opciones_pres, index=idx_pres)
+                            edit_presentacion = st.selectbox("Presentación del Producto", opciones_pres, index=idx_pres, key=f"inp_edit_pre_{id_p}")
                             
-                            edit_unidades_caja = st.number_input("Unidades por Caja / Pack", min_value=1, value=int(p_sel['unidades_por_caja'] or 1), step=1)
+                            edit_unidades_caja = st.number_input("Unidades por Caja / Pack", min_value=1, value=int(p_sel['unidades_por_caja'] or 1), step=1, key=f"inp_edit_uc_{id_p}")
                             if edit_presentacion == "Tableta / Cápsula":
-                                edit_unidades_blister = st.number_input("Unidades por Blíster", min_value=1, value=int(p_sel['unidades_por_blister'] or 1), step=1)
+                                edit_unidades_blister = st.number_input("Unidades por Blíster", min_value=1, value=int(p_sel['unidades_por_blister'] or 1), step=1, key=f"inp_edit_ub_{id_p}")
                             else:
                                 edit_unidades_blister = 1
                             
                             fecha_defecto = p_sel['fecha_vencimiento'] if p_sel['fecha_vencimiento'] else obtener_fecha_hoy()
-                            edit_vence = st.date_input("Fecha de Vencimiento", value=fecha_defecto, format="DD/MM/YYYY")
+                            edit_vence = st.date_input("Fecha de Vencimiento", value=fecha_defecto, format="DD/MM/YYYY", key=f"inp_edit_fec_{id_p}")
                             
-                            edit_stock = st.number_input("Stock Total (unidades)", min_value=0, value=int(p_sel['stock_actual_unidades']))
-                            edit_costo = st.number_input("Costo Unitario (S/.)", min_value=0.0, value=float(p_sel['precio_costo_unidad']))
-                            edit_venta_u = st.number_input("Venta Unitario (S/.)", min_value=0.0, value=float(p_sel['precio_venta_unidad']))
-                            edit_venta_b = st.number_input("Venta Blíster (S/.)", min_value=0.0, value=float(p_sel['precio_venta_blister'])) if edit_presentacion == "Tableta / Cápsula" else 0.0
+                            edit_stock = st.number_input("Stock Total (unidades)", min_value=0, value=int(p_sel['stock_actual_unidades']), key=f"inp_edit_stk_{id_p}")
+                            edit_costo = st.number_input("Costo Unitario (S/.)", min_value=0.0, value=float(p_sel['precio_costo_unidad']), key=f"inp_edit_cst_{id_p}")
+                            edit_venta_u = st.number_input("Venta Unitario (S/.)", min_value=0.0, value=float(p_sel['precio_venta_unidad']), key=f"inp_edit_vtu_{id_p}")
+                            edit_venta_b = st.number_input("Venta Blíster (S/.)", min_value=0.0, value=float(p_sel['precio_venta_blister']), key=f"inp_edit_vtb_{id_p}") if edit_presentacion == "Tableta / Cápsula" else 0.0
                             
                             guardar_edit = st.form_submit_button("💾 Guardar Cambios")
                             if guardar_edit:
