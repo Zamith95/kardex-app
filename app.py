@@ -577,7 +577,7 @@ def modal_agregar_producto_compra(lista_productos):
         
         if tot_unidades_compra > 0 and costo_total_item > 0:
             costo_u_calc = costo_total_item / tot_unidades_compra
-            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculado:** S/. {costo_u_calc:.4f} por unidad.")
+            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculated:** S/. {costo_u_calc:.4f} por unidad.")
             
         st.markdown("---")
         col_m_btn1, col_m_btn2 = st.columns([1, 1])
@@ -615,13 +615,14 @@ def modal_editar_ventas():
     
     fecha_editar = st.date_input("📅 Fecha:", value=obtener_fecha_hoy(), format="DD/MM/YYYY", key="input_fecha_modal_editar")
     
+    # 1. ORDENAMOS POR NOMBRE Y MARCA DEL PRODUCTO PARA MOSTRAR DUPLICADOS JUNTOS
     query_v_fecha = """
         SELECT m.id_movimiento, m.id_producto, p.nombre, p.marca, p.presentacion, 
                m.unidades, m.blisters, p.unidades_por_blister, m.monto_total
         FROM movimientos m
         JOIN productos p ON m.id_producto = p.id_producto
         WHERE m.fecha = %s AND m.tipo_movimiento = 'VENTA'
-        ORDER BY m.id_movimiento DESC
+        ORDER BY p.nombre ASC, p.marca ASC, m.id_movimiento DESC
     """
     ventas_del_dia = db.ejecutar_query(query_v_fecha, (fecha_editar,), fetch=True)
     
@@ -662,7 +663,7 @@ def modal_editar_ventas():
                     db.ejecutar_query("UPDATE productos SET stock_actual_unidades = stock_actual_unidades + %s WHERE id_producto = %s", (tot_unid_mov, id_prod), commit=True)
                     db.cargar_productos_db.clear()
                     st.toast(f"🗑️ Se eliminó la venta de {nom_prod} y se reintegraron {tot_unid_mov} u. al stock.", icon="✅")
-                    st.rerun()
+                    # 2. NO HACEMOS RERUN PARA PERMITIR QUE EL MODAL PERMANEZCA ABIERTO Y CONTINUAR ELIMINANDO
             st.markdown("<hr style='margin: 5px 0; border-color: #eee;'>", unsafe_allow_html=True)
 
 # =====================================================================
