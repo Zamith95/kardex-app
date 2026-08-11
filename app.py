@@ -1609,11 +1609,17 @@ elif menu_url == "compra":
 # PANTALLA 5: REPORTES Y CONTABILIDAD
 # =====================================================================
 elif menu_url == "reportes":
-    st.header("📊 Centro de Reportes y Analítica")
+    col_tit_rep, col_btn_mod_rep = st.columns([0.92, 0.08])
+    with col_tit_rep:
+        st.header("📊 Centro de Reportes y Analítica")
+    with col_btn_mod_rep:
+        if st.button("✏️", type="primary", help="Corregir o Modificar Ventas", key="btn_mod_ventas_global"):
+            modal_editar_ventas()
     
     tipo_reporte_sel = st.selectbox(
         "Selecciona el tipo de reporte a visualizar:",
         [
+            "📊 Reporte General y Métricas",
             "🔍 Reporte por Producto",
             "💵 Reporte de Ventas",
             "🛒 Reporte de Compras"
@@ -1623,9 +1629,77 @@ elif menu_url == "reportes":
     st.markdown("---")
 
     # -----------------------------------------------------------------
+    # MÓDULO: REPORTE GENERAL (PRODUCTOS MÁS/MENOS VENDIDOS)
+    # -----------------------------------------------------------------
+    if tipo_reporte_sel == "📊 Reporte General y Métricas":
+        st.subheader("📊 Métricas Generales y Movimientos de Inventario")
+        
+        col_fg1, col_fg2 = st.columns(2)
+        with col_fg1:
+            filtro_gen_tiempo = st.selectbox("📅 Periodo de Análisis:", ["Este Mes", "Esta Semana", "Hoy", "Todo el Historial"], key="f_gen_tiempo")
+        
+        f_inicio_g = obtener_fecha_hoy()
+        f_fin_g = obtener_fecha_hoy()
+        
+        if filtro_gen_tiempo == "Hoy":
+            f_inicio_g = obtener_fecha_hoy()
+        elif filtro_gen_tiempo == "Esta Semana":
+            f_inicio_g = obtener_fecha_hoy() - timedelta(days=obtener_fecha_hoy().weekday())
+        elif filtro_gen_tiempo == "Este Mes":
+            f_inicio_g = obtener_fecha_hoy().replace(day=1)
+        elif filtro_gen_tiempo == "Todo el Historial":
+            f_inicio_g = datetime(2020, 1, 1).date()
+            f_fin_g = obtener_fecha_hoy() + timedelta(days=365)
+
+        # Consulta ranking más vendidos
+        query_top = """
+            SELECT p.nombre, p.marca, p.presentacion, 
+                   SUM((m.unidades) + (m.blisters * p.unidades_por_blister)) AS total_unid_vendidas,
+                   SUM(m.monto_total) AS total_recaudado,
+                   SUM(m.ingreso_neto) AS ganancia_generada
+            FROM movimientos m
+            JOIN productos p ON m.id_producto = p.id_producto
+            WHERE m.fecha >= %s AND m.fecha <= %s AND m.tipo_movimiento = 'VENTA'
+            GROUP BY p.id_producto, p.nombre, p.marca, p.presentacion
+            ORDER BY total_unid_vendidas DESC
+            LIMIT 10
+        """
+        top_vendidos = db.ejecutar_query(query_top, (f_inicio_g, f_fin_g), fetch=True)
+        
+        col_g1, col_g2 = st.columns(2)
+        
+        with col_g1:
+            st.markdown("### 🔥 Top 10 Productos Más Vendidos")
+            if not top_vendidos:
+                st.info("No hay registro de ventas en el período seleccionado.")
+            else:
+                df_top = pd.DataFrame(top_vendidos, columns=["Producto", "Principio Activo", "Presentación", "Unid. Vendidas", "Monto Total (S/.)", "Ganancia (S/.)"])
+                st.dataframe(df_top, use_container_width=True)
+
+        with col_g2:
+            st.markdown("### 💤 Productos Sin Movimiento / Menos Vendidos")
+            query_sin_mov = """
+                SELECT p.nombre, p.marca, p.presentacion, p.stock_actual_unidades
+                FROM productos p
+                WHERE p.id_producto NOT IN (
+                    SELECT DISTINCT id_producto 
+                    FROM movimientos 
+                    WHERE fecha >= %s AND fecha <= %s AND tipo_movimiento = 'VENTA'
+                )
+                ORDER BY p.nombre ASC
+                LIMIT 10
+            """
+            sin_mov = db.ejecutar_query(query_sin_mov, (f_inicio_g, f_fin_g), fetch=True)
+            if not sin_mov:
+                st.success("¡Todos tus productos registraron al menos una venta en este rango!")
+            else:
+                df_sin_mov = pd.DataFrame(sin_mov, columns=["Producto", "Principio Activo", "Presentación", "Stock Físico (Unid.)"])
+                st.dataframe(df_sin_mov, use_container_width=True)
+
+    # -----------------------------------------------------------------
     # MÓDULO: REPORTE PERSONALIZADO POR PRODUCTO (KÁRDEX)
     # -----------------------------------------------------------------
-    if tipo_reporte_sel == "🔍 Reporte por Producto":
+    elif tipo_reporte_sel == "🔍 Reporte por Producto":
         st.subheader("🔍 Reporte Detallado y Kárdex por Producto")
         
         todos_prods = db.cargar_productos_db()
@@ -1639,7 +1713,9 @@ elif menu_url == "reportes":
             with col_p1:
                 prod_sel_rep = st.selectbox(
                     "📦 Selecciona el Producto:",
-                    list(dict_prods_rep.keys()),
+                    [""] + list(dict_prods_rep.keys()),
+                    index=0,
+                    placeholder="Haz clic para seleccionar o buscar un producto...",
                     key="sel_prod_reporte_ind"
                 )
             with col_p2:
@@ -1671,167 +1747,163 @@ elif menu_url == "reportes":
                 with col_dp2:
                     fecha_fin_p = st.date_input("Hasta:", obtener_fecha_hoy(), format="DD/MM/YYYY", key="rep_prod_hasta")
 
-            p_objeto = dict_prods_rep[prod_sel_rep]
-            id_p_sel = p_objeto['id_producto']
-            
-            # Consulta adaptada de movimientos compatibles con PostgreSQL / Neon
-            query_movs_p = """
-                SELECT m.id_movimiento, m.fecha, m.tipo_movimiento, m.unidades, m.blisters, m.cajas, 
-                       m.monto_total, m.costo_total_capital, m.ingreso_neto,
-                       p.unidades_por_blister, p.unidades_por_caja
-                FROM movimientos m
-                JOIN productos p ON m.id_producto = p.id_producto
-                WHERE m.id_producto = %s AND m.fecha >= %s AND m.fecha <= %s
-                ORDER BY m.fecha ASC, m.id_movimiento ASC
-            """
-            movs_p_data = db.ejecutar_query(query_movs_p, (id_p_sel, fecha_inicio_p, fecha_fin_p), fetch=True)
-            
-            # Ficha del producto encabezado
-            st.markdown(f"### 📋 Ficha Actual: `{p_objeto['nombre']}`")
-            col_k1, col_k2, col_k3, col_k4 = st.columns(4)
-            with col_k1:
-                st.markdown(f"**Principio Activo:** {p_objeto['marca']}")
-                st.markdown(f"**Presentación:** {p_objeto['presentacion']}")
-            with col_k2:
-                st.markdown(f"**Laboratorio:** {p_objeto['laboratorio'] or '-'}")
-                venc_s = p_objeto['fecha_vencimiento'].strftime('%d/%m/%Y') if p_objeto['fecha_vencimiento'] else '-'
-                st.markdown(f"**Fecha Vencimiento:** {venc_s}")
-            with col_k3:
-                st.markdown(f"**Costo Unitario:** S/. {p_objeto['precio_costo_unidad']:.2f}")
-                st.markdown(f"**Venta Unitario:** S/. {p_objeto['precio_venta_unidad']:.2f}")
-            with col_k4:
-                st.markdown(f"📦 **Stock Físico Actual:** `{p_objeto['stock_actual_unidades']} u.`")
-
-            st.markdown("---")
-
-            if not movs_p_data:
-                st.info(f"ℹ️ No se registraron movimientos (ventas o compras) para **{p_objeto['nombre']}** en el período seleccionado.")
-            else:
-                filas_kardex = []
-                total_unidades_ingresadas = 0
-                total_unidades_vendidas = 0
-                total_monto_ventas = 0.0
-                total_monto_compras = 0.0
-                total_ganancia_neto = 0.0
-
-                for m in movs_p_data:
-                    f_mov = m[1]
-                    if isinstance(f_mov, str):
-                        f_mov = datetime.strptime(f_mov, "%Y-%m-%d").date()
-                    elif isinstance(f_mov, datetime):
-                        f_mov = f_mov.date()
-
-                    tipo_m = str(m[2])
-                    u_sueltas = int(m[3] or 0)
-                    b_cant = int(m[4] or 0)
-                    c_cant = float(m[5] or 0)
-                    monto_tot = float(m[6] or 0.0)
-                    costo_tot = float(m[7] or 0.0)
-                    ing_neto = float(m[8] or 0.0)
-                    u_por_b = int(m[9] or 1)
-                    u_por_c = int(m[10] or 1)
-
-                    tot_u_mov = u_sueltas + (b_cant * u_por_b) + int(round(c_cant * u_por_c))
-
-                    if tipo_m == "VENTA":
-                        entradas_u = 0
-                        salidas_u = tot_u_mov
-                        total_unidades_vendidas += tot_u_mov
-                        total_monto_ventas += monto_tot
-                        total_ganancia_neto += ing_neto
-                        monto_str = f"S/. {monto_tot:.2f}"
-                    elif tipo_m == "CONSUMO":
-                        entradas_u = 0
-                        salidas_u = tot_u_mov
-                        monto_str = "S/. 0.00 (Consumo)"
-                    else: # INGRESO / COMPRA
-                        entradas_u = tot_u_mov
-                        salidas_u = 0
-                        total_unidades_ingresadas += tot_u_mov
-                        total_monto_compras += costo_tot
-                        monto_str = f"S/. {costo_tot:.2f}"
-
-                    filas_kardex.append({
-                        "Fecha": f_mov.strftime("%d/%m/%Y"),
-                        "Tipo Movimiento": tipo_m,
-                        "Entradas (Unid.)": entradas_u,
-                        "Salidas (Unid.)": salidas_u,
-                        "Monto Total (S/.)": monto_str,
-                        "Ganancia Neta (S/.)": f"S/. {ing_neto:.2f}" if tipo_m == "VENTA" else "-"
-                    })
-
-                # Métricas destacadas
-                col_m_p1, col_m_p2, col_m_p3, col_m_p4, col_m_p5 = st.columns(5)
-                with col_m_p1:
-                    st.metric("📦 Entradas Totales", f"{total_unidades_ingresadas} u.")
-                with col_m_p2:
-                    st.metric("🛒 Salidas / Ventas", f"{total_unidades_vendidas} u.")
-                with col_m_p3:
-                    st.metric("💵 Total Recaudado Ventas", f"S/. {total_monto_ventas:,.2f}")
-                with col_m_p4:
-                    st.metric("📥 Total Invertido Compras", f"S/. {total_monto_compras:,.2f}")
-                with col_m_p5:
-                    st.metric("📈 Ganancia Neta Real", f"S/. {total_ganancia_neto:,.2f}")
+            if prod_sel_rep != "":
+                p_objeto = dict_prods_rep[prod_sel_rep]
+                id_p_sel = p_objeto['id_producto']
+                
+                # Consulta adaptada de movimientos compatibles con PostgreSQL / Neon
+                query_movs_p = """
+                    SELECT m.id_movimiento, m.fecha, m.tipo_movimiento, m.unidades, m.blisters, m.cajas, 
+                           m.monto_total, m.costo_total_capital, m.ingreso_neto,
+                           p.unidades_por_blister, p.unidades_por_caja
+                    FROM movimientos m
+                    JOIN productos p ON m.id_producto = p.id_producto
+                    WHERE m.id_producto = %s AND m.fecha >= %s AND m.fecha <= %s
+                    ORDER BY m.fecha ASC, m.id_movimiento ASC
+                """
+                movs_p_data = db.ejecutar_query(query_movs_p, (id_p_sel, fecha_inicio_p, fecha_fin_p), fetch=True)
+                
+                # Ficha del producto encabezado
+                st.markdown(f"### 📋 Ficha Actual: `{p_objeto['nombre']}`")
+                col_k1, col_k2, col_k3, col_k4 = st.columns(4)
+                with col_k1:
+                    st.markdown(f"**Principio Activo:** {p_objeto['marca']}")
+                    st.markdown(f"**Presentación:** {p_objeto['presentacion']}")
+                with col_k2:
+                    st.markdown(f"**Laboratorio:** {p_objeto['laboratorio'] or '-'}")
+                    venc_s = p_objeto['fecha_vencimiento'].strftime('%d/%m/%Y') if p_objeto['fecha_vencimiento'] else '-'
+                    st.markdown(f"**Fecha Vencimiento:** {venc_s}")
+                with col_k3:
+                    st.markdown(f"**Costo Unitario:** S/. {p_objeto['precio_costo_unidad']:.2f}")
+                    st.markdown(f"**Venta Unitario:** S/. {p_objeto['precio_venta_unidad']:.2f}")
+                with col_k4:
+                    st.markdown(f"📦 **Stock Físico Actual:** `{p_objeto['stock_actual_unidades']} u.`")
 
                 st.markdown("---")
-                st.subheader(f"📜 Kárdex Histórico de '{p_objeto['nombre']}'")
-                
-                df_kardex = pd.DataFrame(filas_kardex)
-                st.dataframe(df_kardex, use_container_width=True)
 
-                # Exportación
-                df_kardex_excel = df_kardex.copy()
-                df_kardex_excel.insert(0, "N° Item", range(1, len(df_kardex_excel) + 1))
-                
-                output_kp = io.BytesIO()
-                with pd.ExcelWriter(output_kp, engine='openpyxl') as writer:
-                    df_kardex_excel.to_excel(writer, sheet_name="Kardex Producto", index=False, startrow=4)
-                    workbook = writer.book
-                    worksheet = writer.sheets["Kardex Producto"]
+                if not movs_p_data:
+                    st.info(f"ℹ️ No se registraron movimientos (ventas o compras) para **{p_objeto['nombre']}** en el período seleccionado.")
+                else:
+                    filas_kardex = []
+                    total_unidades_ingresadas = 0
+                    total_unidades_vendidas = 0
+                    total_monto_ventas = 0.0
+                    total_monto_compras = 0.0
+                    total_ganancia_neto = 0.0
+
+                    for m in movs_p_data:
+                        f_mov = m[1]
+                        if isinstance(f_mov, str):
+                            f_mov = datetime.strptime(f_mov, "%Y-%m-%d").date()
+                        elif isinstance(f_mov, datetime):
+                            f_mov = f_mov.date()
+
+                        tipo_m = str(m[2])
+                        u_sueltas = int(m[3] or 0)
+                        b_cant = int(m[4] or 0)
+                        c_cant = float(m[5] or 0)
+                        monto_tot = float(m[6] or 0.0)
+                        costo_tot = float(m[7] or 0.0)
+                        ing_neto = float(m[8] or 0.0)
+                        u_por_b = int(m[9] or 1)
+                        u_por_c = int(m[10] or 1)
+
+                        tot_u_mov = u_sueltas + (b_cant * u_por_b) + int(round(c_cant * u_por_c))
+
+                        if tipo_m == "VENTA":
+                            entradas_u = 0
+                            salidas_u = tot_u_mov
+                            total_unidades_vendidas += tot_u_mov
+                            total_monto_ventas += monto_tot
+                            total_ganancia_neto += ing_neto
+                            monto_str = f"S/. {monto_tot:.2f}"
+                        elif tipo_m == "CONSUMO":
+                            entradas_u = 0
+                            salidas_u = tot_u_mov
+                            monto_str = "S/. 0.00 (Consumo)"
+                        else: # INGRESO / COMPRA
+                            entradas_u = tot_u_mov
+                            salidas_u = 0
+                            total_unidades_ingresadas += tot_u_mov
+                            total_monto_compras += costo_tot
+                            monto_str = f"S/. {costo_tot:.2f}"
+
+                        filas_kardex.append({
+                            "Fecha": f_mov.strftime("%d/%m/%Y"),
+                            "Tipo Movimiento": tipo_m,
+                            "Entradas (Unid.)": entradas_u,
+                            "Salidas (Unid.)": salidas_u,
+                            "Monto Total (S/.)": monto_str,
+                            "Ganancia Neta (S/.)": f"S/. {ing_neto:.2f}" if tipo_m == "VENTA" else "-"
+                        })
+
+                    # Métricas destacadas
+                    col_m_p1, col_m_p2, col_m_p3, col_m_p4, col_m_p5 = st.columns(5)
+                    with col_m_p1:
+                        st.metric("📦 Entradas Totales", f"{total_unidades_ingresadas} u.")
+                    with col_m_p2:
+                        st.metric("🛒 Salidas / Ventas", f"{total_unidades_vendidas} u.")
+                    with col_m_p3:
+                        st.metric("💵 Total Recaudado Ventas", f"S/. {total_monto_ventas:,.2f}")
+                    with col_m_p4:
+                        st.metric("📥 Total Invertido Compras", f"S/. {total_monto_compras:,.2f}")
+                    with col_m_p5:
+                        st.metric("📈 Ganancia Neta Real", f"S/. {total_ganancia_neto:,.2f}")
+
+                    st.markdown("---")
+                    st.subheader(f"📜 Kárdex Histórico de '{p_objeto['nombre']}'")
                     
-                    worksheet["A1"] = f"REPORTE KÁRDEX DE PRODUCTO: {p_objeto['nombre'].upper()}"
-                    worksheet["A2"] = f"Empresa: {st.session_state.nombre_negocio.upper()} | Rango: {fecha_inicio_p.strftime('%d/%m/%Y')} al {fecha_fin_p.strftime('%d/%m/%Y')}"
-                    worksheet["A3"] = f"Stock Actual Físico: {p_objeto['stock_actual_unidades']} u. | Generado: {obtener_fecha_hoy().strftime('%d/%m/%Y')} {datetime.now().strftime('%H:%M')}"
+                    df_kardex = pd.DataFrame(filas_kardex)
+                    st.dataframe(df_kardex, use_container_width=True)
+
+                    # Exportación
+                    df_kardex_excel = df_kardex.copy()
+                    df_kardex_excel.insert(0, "N° Item", range(1, len(df_kardex_excel) + 1))
                     
-                    for col in worksheet.columns:
-                        max_len = max(len(str(cell.value or '')) for cell in col)
-                        col_letter = col[0].column_letter
-                        worksheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
+                    output_kp = io.BytesIO()
+                    with pd.ExcelWriter(output_kp, engine='openpyxl') as writer:
+                        df_kardex_excel.to_excel(writer, sheet_name="Kardex Producto", index=False, startrow=4)
+                        workbook = writer.book
+                        worksheet = writer.sheets["Kardex Producto"]
                         
-                excel_kp_bytes = output_kp.getvalue()
-                pdf_kp_bytes = generar_pdf_bonito(
-                    df_kardex_excel,
-                    titulo_reporte=f"Kárdex: {p_objeto['nombre']}",
-                    subti_reporte=f"Empresa: {st.session_state.nombre_negocio} | Rango: {fecha_inicio_p.strftime('%d/%m/%Y')} al {fecha_fin_p.strftime('%d/%m/%Y')}",
-                    es_inventario=False
-                )
+                        worksheet["A1"] = f"REPORTE KÁRDEX DE PRODUCTO: {p_objeto['nombre'].upper()}"
+                        worksheet["A2"] = f"Empresa: {st.session_state.nombre_negocio.upper()} | Rango: {fecha_inicio_p.strftime('%d/%m/%Y')} al {fecha_fin_p.strftime('%d/%m/%Y')}"
+                        worksheet["A3"] = f"Stock Actual Físico: {p_objeto['stock_actual_unidades']} u. | Generado: {obtener_fecha_hoy().strftime('%d/%m/%Y')} {datetime.now().strftime('%H:%M')}"
+                        
+                        for col in worksheet.columns:
+                            max_len = max(len(str(cell.value or '')) for cell in col)
+                            col_letter = col[0].column_letter
+                            worksheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
+                            
+                    excel_kp_bytes = output_kp.getvalue()
+                    pdf_kp_bytes = generar_pdf_bonito(
+                        df_kardex_excel,
+                        titulo_reporte=f"Kárdex: {p_objeto['nombre']}",
+                        subti_reporte=f"Empresa: {st.session_state.nombre_negocio} | Rango: {fecha_inicio_p.strftime('%d/%m/%Y')} al {fecha_fin_p.strftime('%d/%m/%Y')}",
+                        es_inventario=False
+                    )
 
-                st.write("")
-                col_kp_d1, col_kp_d2, col_kp_d3 = st.columns([2, 1, 2])
-                with col_kp_d2:
-                    with st.popover("📥 Descargar Kárdex", use_container_width=True):
-                        st.download_button(
-                            label="Excel (.xlsx)",
-                            data=excel_kp_bytes,
-                            file_name=f"Kardex_{p_objeto['nombre'].replace(' ', '_')}_{fecha_inicio_p}_al_{fecha_fin_p}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
-                        st.download_button(
-                            label="PDF (.pdf)",
-                            data=pdf_kp_bytes,
-                            file_name=f"Kardex_{p_objeto['nombre'].replace(' ', '_')}_{fecha_inicio_p}_al_{fecha_fin_p}.pdf",
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
+                    st.write("")
+                    col_kp_d1, col_kp_d2, col_kp_d3 = st.columns([2, 1, 2])
+                    with col_kp_d2:
+                        with st.popover("📥 Descargar Kárdex", use_container_width=True):
+                            st.download_button(
+                                label="Excel (.xlsx)",
+                                data=excel_kp_bytes,
+                                file_name=f"Kardex_{p_objeto['nombre'].replace(' ', '_')}_{fecha_inicio_p}_al_{fecha_fin_p}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                            st.download_button(
+                                label="PDF (.pdf)",
+                                data=pdf_kp_bytes,
+                                file_name=f"Kardex_{p_objeto['nombre'].replace(' ', '_')}_{fecha_inicio_p}_al_{fecha_fin_p}.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
 
     elif tipo_reporte_sel == "💵 Reporte de Ventas":
-        col_tit_v, col_btn_edit_v = st.columns([0.92, 0.08])
-        with col_tit_v:
-            st.subheader("💵 Reporte Exclusivo de Ventas y Ganancias")
-        with col_btn_edit_v:
-            if st.button("✏️", type="primary"):
-                modal_editar_ventas()
+        st.subheader("💵 Reporte Exclusivo de Ventas y Ganancias")
         
         filtro_tiempo = st.selectbox("Selecciona Periodo:", ["Hoy", "Esta Semana", "Este Mes", "Rango Personalizado"], key="f_ventas_exc")
         fecha_inicio = obtener_fecha_hoy()
@@ -2085,25 +2157,40 @@ elif menu_url == "usuarios" and st.session_state.usuario_rol == "admin":
             u_rol = st.selectbox("Rol del Usuario", ["vendedor", "admin"])
             
         btn_crear_u = st.form_submit_button("💾 Crear Usuario", type="primary")
-        
         if btn_crear_u:
-            if not u_nombre or not u_pass:
-                st.error("⚠️ Todos los campos son obligatorios.")
-            else:
-                try:
+            if u_nombre and u_pass:
+                res_exist = db.ejecutar_query("SELECT id FROM usuarios WHERE usuario = %s", (u_nombre.strip(),), fetch=True)
+                if res_exist:
+                    st.error("⚠️ El nombre de usuario ya existe. Elige otro.")
+                else:
                     db.ejecutar_query(
                         "INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)",
                         (u_nombre.strip(), u_pass.strip(), u_rol),
                         commit=True
                     )
-                    st.toast(f"✅ Usuario '{u_nombre}' registrado con éxito", icon="👤")
+                    st.toast(f"✅ Usuario {u_nombre} creado con éxito", icon="👤")
                     st.rerun()
-                except Exception:
-                    st.error("⚠️ El nombre de usuario ya existe en el sistema.")
-
+            else:
+                st.error("⚠️ Completa todos los campos.")
+                
     st.markdown("---")
     st.subheader("📋 Usuarios Registrados")
-    users = db.ejecutar_query("SELECT id, usuario, rol FROM usuarios ORDER BY id ASC", fetch=True)
-    if users:
-        df_u = pd.DataFrame(users, columns=["ID", "Usuario", "Rol"])
-        st.dataframe(df_u, use_container_width=True)
+    usuarios_db = db.ejecutar_query("SELECT id, usuario, rol FROM usuarios ORDER BY usuario ASC", fetch=True)
+    
+    if usuarios_db:
+        for usr in usuarios_db:
+            id_usr, nom_usr, rol_usr = usr
+            col_usr1, col_usr2, col_usr3 = st.columns([3, 3, 2])
+            with col_usr1:
+                st.markdown(f"**Usuario:** `{nom_usr}`")
+            with col_usr2:
+                st.markdown(f"**Rol:** `{rol_usr.capitalize()}`")
+            with col_usr3:
+                if nom_usr != st.session_state.usuario_nombre:
+                    if st.button("🗑️ Eliminar", key=f"del_usr_{id_usr}"):
+                        db.ejecutar_query("DELETE FROM usuarios WHERE id = %s", (id_usr,), commit=True)
+                        st.toast(f"🗑️ Usuario {nom_usr} eliminado", icon="✅")
+                        st.rerun()
+                else:
+                    st.caption("(Tu cuenta activa)")
+            st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
