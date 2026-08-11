@@ -609,7 +609,7 @@ def modal_agregar_producto_compra(lista_productos):
 # =====================================================================
 # MODAL INTERACTIVO PARA EDITAR / ELIMINAR VENTAS POR FECHA
 # =====================================================================
-@st.dialog("✏️", width="small")
+@st.dialog("Corregir venta", width="small")
 def modal_editar_ventas():
     st.write("Selecciona la fecha exacta en el calendario para consultar y corregir los productos vendidos:")
     
@@ -1626,7 +1626,7 @@ elif menu_url == "reportes":
         with col_tit_v:
             st.subheader("💵 Reporte Exclusivo de Ventas y Ganancias")
         with col_btn_edit_v:
-            if st.button("✏️ Editar / Corregir Ventas", type="primary", use_container_width=True):
+            if st.button("✏️", type="primary", use_container_width=True):
                 modal_editar_ventas()
         
         filtro_tiempo = st.selectbox("Selecciona Periodo:", ["Hoy", "Esta Semana", "Este Mes", "Rango Personalizado"], key="f_ventas_exc")
