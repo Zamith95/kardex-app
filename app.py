@@ -614,55 +614,59 @@ def modal_editar_ventas():
     
     fecha_editar = st.date_input("📅 Fecha:", value=obtener_fecha_hoy(), format="DD/MM/YYYY", key="input_fecha_modal_editar")
     
-    query_v_fecha = """
-        SELECT m.id_movimiento, m.id_producto, p.nombre, p.marca, p.presentacion, 
-               m.unidades, m.blisters, p.unidades_por_blister, m.monto_total
-        FROM movimientos m
-        JOIN productos p ON m.id_producto = p.id_producto
-        WHERE m.fecha = %s AND m.tipo_movimiento = 'VENTA'
-        ORDER BY p.nombre ASC, p.marca ASC, m.id_movimiento DESC
-    """
-    ventas_del_dia = db.ejecutar_query(query_v_fecha, (fecha_editar,), fetch=True)
-    
     st.markdown("---")
     st.markdown(f"### 📋 Productos Vendidos el `{fecha_editar.strftime('%d/%m/%Y')}`")
     
-    if not ventas_del_dia:
-        st.info("ℹ️ No se registraron ventas en la fecha seleccionada.")
-    else:
-        for item_v in ventas_del_dia:
-            id_mov = item_v[0]
-            id_prod = item_v[1]
-            nom_prod = item_v[2]
-            marca_prod = item_v[3]
-            pres_prod = item_v[4]
-            u_sueltas = item_v[5]
-            blis_cant = item_v[6]
-            u_por_blis = item_v[7] or 1
-            monto_v = float(item_v[8])
-            
-            tot_unid_mov = u_sueltas + (blis_cant * u_por_blis)
-            
-            cant_str = f"{u_sueltas} u."
-            if blis_cant > 0:
-                cant_str += f" + {blis_cant} blís."
+    @st.fragment
+    def render_lista_ventas_modal(f_edit):
+        query_v_fecha = """
+            SELECT m.id_movimiento, m.id_producto, p.nombre, p.marca, p.presentacion, 
+                   m.unidades, m.blisters, p.unidades_por_blister, m.monto_total
+            FROM movimientos m
+            JOIN productos p ON m.id_producto = p.id_producto
+            WHERE m.fecha = %s AND m.tipo_movimiento = 'VENTA'
+            ORDER BY p.nombre ASC, p.marca ASC, m.id_movimiento DESC
+        """
+        ventas_del_dia = db.ejecutar_query(query_v_fecha, (f_edit,), fetch=True)
+        
+        if not ventas_del_dia:
+            st.info("ℹ️ No se registraron ventas en la fecha seleccionada.")
+        else:
+            for item_v in ventas_del_dia:
+                id_mov = item_v[0]
+                id_prod = item_v[1]
+                nom_prod = item_v[2]
+                marca_prod = item_v[3]
+                pres_prod = item_v[4]
+                u_sueltas = item_v[5]
+                blis_cant = item_v[6]
+                u_por_blis = item_v[7] or 1
+                monto_v = float(item_v[8])
                 
-            col_m_info, col_m_cant, col_m_monto, col_m_del = st.columns([4, 2, 2, 2])
-            
-            with col_m_info:
-                st.markdown(f"**{nom_prod}**  \n<small style='color:gray;'>{marca_prod} - [{pres_prod}]</small>", unsafe_allow_html=True)
-            with col_m_cant:
-                st.markdown(f"📦 **{cant_str}**  \n<small style='color:gray;'>({tot_unid_mov} u. total)</small>", unsafe_allow_html=True)
-            with col_m_monto:
-                st.markdown(f"💰 **S/. {monto_v:.2f}**")
-            with col_m_del:
-                if st.button("🗑️ Eliminar", key=f"btn_del_mov_{id_mov}", type="secondary", use_container_width=True):
-                    db.ejecutar_query("DELETE FROM movimientos WHERE id_movimiento = %s", (id_mov,), commit=True)
-                    db.ejecutar_query("UPDATE productos SET stock_actual_unidades = stock_actual_unidades + %s WHERE id_producto = %s", (tot_unid_mov, id_prod), commit=True)
-                    st.cache_data.clear()
-                    st.toast(f"🗑️ Se eliminó la venta de {nom_prod} y se reintegraron {tot_unid_mov} u. al stock.", icon="✅")
-                    st.rerun()
-            st.markdown("<hr style='margin: 5px 0; border-color: #eee;'>", unsafe_allow_html=True)
+                tot_unid_mov = u_sueltas + (blis_cant * u_por_blis)
+                
+                cant_str = f"{u_sueltas} u."
+                if blis_cant > 0:
+                    cant_str += f" + {blis_cant} blís."
+                    
+                col_m_info, col_m_cant, col_m_monto, col_m_del = st.columns([4, 2, 2, 2])
+                
+                with col_m_info:
+                    st.markdown(f"**{nom_prod}**  \n<small style='color:gray;'>{marca_prod} - [{pres_prod}]</small>", unsafe_allow_html=True)
+                with col_m_cant:
+                    st.markdown(f"📦 **{cant_str}**  \n<small style='color:gray;'>({tot_unid_mov} u. total)</small>", unsafe_allow_html=True)
+                with col_m_monto:
+                    st.markdown(f"💰 **S/. {monto_v:.2f}**")
+                with col_m_del:
+                    if st.button("🗑️ Eliminar", key=f"btn_del_mov_{id_mov}", type="secondary", use_container_width=True):
+                        db.ejecutar_query("DELETE FROM movimientos WHERE id_movimiento = %s", (id_mov,), commit=True)
+                        db.ejecutar_query("UPDATE productos SET stock_actual_unidades = stock_actual_unidades + %s WHERE id_producto = %s", (tot_unid_mov, id_prod), commit=True)
+                        st.cache_data.clear()
+                        st.toast(f"🗑️ Se eliminó la venta de {nom_prod} y se reintegraron {tot_unid_mov} u. al stock.", icon="✅")
+                        st.rerun(scope="fragment")
+                st.markdown("<hr style='margin: 5px 0; border-color: #eee;'>", unsafe_allow_html=True)
+
+    render_lista_ventas_modal(fecha_editar)
 
 # =====================================================================
 # BARRA LATERAL MULTIPESTAÑA
