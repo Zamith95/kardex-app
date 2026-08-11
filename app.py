@@ -659,7 +659,7 @@ def modal_editar_ventas():
                 if st.button("🗑️ Eliminar", key=f"btn_del_mov_{id_mov}", type="secondary", use_container_width=True):
                     db.ejecutar_query("DELETE FROM movimientos WHERE id_movimiento = %s", (id_mov,), commit=True)
                     db.ejecutar_query("UPDATE productos SET stock_actual_unidades = stock_actual_unidades + %s WHERE id_producto = %s", (tot_unid_mov, id_prod), commit=True)
-                    db.cargar_productos_db.clear()
+                    st.cache_data.clear()
                     st.toast(f"🗑️ Se eliminó la venta de {nom_prod} y se reintegraron {tot_unid_mov} u. al stock.", icon="✅")
                     st.rerun()
             st.markdown("<hr style='margin: 5px 0; border-color: #eee;'>", unsafe_allow_html=True)
@@ -899,7 +899,7 @@ if menu_url == "buscar":
                                     (edit_nombre_clean, edit_marca_clean, edit_lab_clean, edit_presentacion, edit_unidades_caja, edit_unidades_blister, edit_vence, edit_stock, edit_costo, edit_venta_u, edit_venta_b, id_p),
                                     commit=True
                                 )
-                                db.cargar_productos_db.clear()
+                                st.cache_data.clear()
                                 st.toast("💾 ¡Cambios guardados en la base de datos!", icon="✅")
                                 st.success("🎉 ¡Producto editado exitosamente!")
                                 st.session_state.editando_id = None
@@ -912,7 +912,7 @@ if menu_url == "buscar":
                             if st.button("Sí, Eliminar", key="si_elim"):
                                 db.ejecutar_query("DELETE FROM movimientos WHERE id_producto=%s", (id_p,), commit=True)
                                 db.ejecutar_query("DELETE FROM productos WHERE id_producto=%s", (id_p,), commit=True)
-                                db.cargar_productos_db.clear()
+                                st.cache_data.clear()
                                 st.success("¡Eliminado correctamente!")
                                 st.rerun()
                         with col_elim2:
@@ -1259,7 +1259,7 @@ elif menu_url == "registrar":
             )
             
             db.ejecutar_query(query_insert, valores, commit=True)
-            db.cargar_productos_db.clear()
+            st.cache_data.clear()
             
             st.session_state.mensaje_exito = f"🎉 ¡Producto '{nombre_prod}' registrado con éxito!"
             st.session_state.reset_id += 1
@@ -1300,7 +1300,7 @@ elif menu_url == "venta":
         st.subheader("➕ Agregar Producto a la Boleta")
     with col_btn_reload:
         if st.button("🔄", help="actualizar productos", use_container_width=True):
-            db.cargar_productos_db.clear()
+            st.cache_data.clear()
             st.rerun()
     
     if not todos_productos:
@@ -1457,7 +1457,7 @@ elif menu_url == "venta":
                     st.session_state.boleta_ventas = []
                     st.session_state.reset_fecha_version += 1
                     st.session_state.reset_boleta_item += 1
-                    db.cargar_productos_db.clear()
+                    st.cache_data.clear()
                     
                     st.success("🎉 ¡Todas las operaciones de la boleta fueron procesadas y la fecha regresó automáticamente a hoy!")
                     st.balloons()
@@ -1596,7 +1596,7 @@ elif menu_url == "compra":
                     
                     st.session_state.carrito_compras = []
                     st.session_state.reset_compra_version += 1
-                    db.cargar_productos_db.clear()
+                    st.cache_data.clear()
                     st.session_state.mensaje_exito_compra = f"🎉 **¡Compra registrada con éxito!** Se procesó el comprobante **{tipo_doc_compra} - {num_doc_compra if num_doc_compra else 'S/N'}** y el inventario se actualizó."
                     st.rerun()
 
@@ -1972,9 +1972,6 @@ elif menu_url == "reportes":
             with col_r1:
                 st.markdown("### 🔥 Top 10 Más Vendidos")
                 st.dataframe(df_rank.head(10), use_container_width=True)
-            with col_r2:
-                st.markdown("### 🧊 Top 10 Menos Vendidos / Sin Salida")
-                st.dataframe(df_rank.tail(10).sort_values(by="Unidades Vendidas", ascending=True), use_container_width=True)
 
 # =====================================================================
 # PANTALLA 6: CONFIGURACIÓN
