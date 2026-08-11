@@ -782,31 +782,6 @@ if menu_url == "buscar":
         st.info("Aún no hay productos registrados.")
     else:
         total_invertido_capital = sum(float(p['stock_actual_unidades']) * float(p['precio_costo_unidad']) for p in todos_productos)
-        total_valor_venta_esperado = sum(float(p['stock_actual_unidades']) * float(p['precio_venta_unidad']) for p in todos_productos)
-        ganancia_inventario_potencial = total_valor_venta_esperado - total_invertido_capital
-        
-        st.markdown("### 💰 Valor Actual de tu Mercadería en Almacén")
-        col_val1, col_val2, col_val3 = st.columns(3)
-        with col_val1:
-            st.metric(
-                label="💵 Capital Total Invertido (Precio de Costo)", 
-                value=f"S/. {total_invertido_capital:,.2f}",
-                help="Suma total de lo que te costó comprar la mercadería que te queda en stock."
-            )
-        with col_val2:
-            st.metric(
-                label="📈 Valor de Retorno (Precio de Venta)", 
-                value=f"S/. {total_valor_venta_esperado:,.2f}",
-                help="Suma total de dinero que recibirás si vendes todo tu stock actual por unidades sueltas."
-            )
-        with col_val3:
-            st.metric(
-                label="✨ Ganancia Estimada en Almacén", 
-                value=f"S/. {ganancia_inventario_potencial:,.2f}",
-                help="Es la diferencia entre el valor de venta total y tu capital invertido."
-            )
-        
-        st.markdown("---")
         
         opciones_busqueda = {f"{p['nombre']} ({p['marca']}) - [{p['presentacion']}] - Stock: {p['stock_actual_unidades']} u.": p for p in todos_productos}
         busqueda_sel = st.selectbox("Escribe o selecciona el medicamento para ver detalles:", [""] + list(opciones_busqueda.keys()), index=0)
@@ -1098,7 +1073,7 @@ if menu_url == "buscar":
                     )
 
 # =====================================================================
-# PANTALLA 2: REGISTRAR NUEVO PRODUCTO (CON PLACEHOLDERS Y AUTORELLENADO)
+# PANTALLA 2: REGISTRAR NUEVO PRODUCTO (CON PLACEHOLDERS)
 # =====================================================================
 elif menu_url == "registrar":
     st.header("📝 Registrar Nuevo Producto en el Inventario")
@@ -1115,31 +1090,13 @@ elif menu_url == "registrar":
     labs_query = ejecutar_query("SELECT DISTINCT laboratorio FROM productos WHERE laboratorio IS NOT NULL AND laboratorio != '' ORDER BY laboratorio ASC", fetch=True)
     laboratorios_existentes = [l['laboratorio'] for l in labs_query] if labs_query else []
 
-    # BASE DE DATOS DE PLANTILLAS REGISTRADAS PARA AUTORELLENAR
-    dict_plantillas = {f"{p['nombre']} ({p['marca']})": p for p in todos_productos} if todos_productos else {}
-    prod_base_sel = st.selectbox(
-        "💡 Basarse en un producto ya registrado (Opcional - Autorrellena los datos):",
-        ["[ Crear nuevo producto desde cero ]"] + list(dict_plantillas.keys()),
-        disabled=disabled_mode,
-        key=f"plantilla_prod_{k}"
-    )
-
     val_nombre_defecto = ""
     val_marca_defecto = ""
     val_lab_defecto = "[ Escribir un nuevo laboratorio ]"
     val_pres_defecto = "Tableta / Cápsula"
-
-    if prod_base_sel != "[ Crear nuevo producto desde cero ]":
-        p_base = dict_plantillas[prod_base_sel]
-        val_nombre_defecto = p_base['nombre']
-        val_marca_defecto = p_base['marca']
-        val_pres_defecto = p_base['presentacion'] if p_base['presentacion'] in ["Tableta / Cápsula", "Jarabe / Líquido", "Crema / Pomada", "Frasco / Pote", "Inyectable", "Unidad"] else "Tableta / Cápsula"
-        if p_base['laboratorio'] and p_base['laboratorio'] in laboratorios_existentes:
-            val_lab_defecto = p_base['laboratorio']
     
     st.subheader("Información Básica")
     
-    # MODIFICACIÓN APLICADA: Uso de 'placeholder' para borrado automático al enfocar o escribir
     nombre_prod = st.text_input(
         "Nombre Comercial del Producto / Marca", 
         value=val_nombre_defecto, 
