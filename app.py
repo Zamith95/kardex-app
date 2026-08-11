@@ -1,6 +1,6 @@
 import streamlit as st
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import io
 import pandas as pd
 import psycopg2
@@ -314,8 +314,13 @@ def cargar_productos_db():
 # =====================================================================
 def obtener_fecha_hoy():
     if pytz:
-        return datetime.now(pytz.timezone("America/Lima")).date()
-    return datetime.now().date()
+        try:
+            return datetime.now(pytz.timezone("America/Lima")).date()
+        except Exception:
+            pass
+    # Fallback exacto para Perú (UTC-5)
+    tz_peru = timezone(timedelta(hours=-5))
+    return datetime.now(tz_peru).date()
 
 fecha_hoy_local = obtener_fecha_hoy()
 fecha_hoy_str = fecha_hoy_local.strftime('%Y-%m-%d')
@@ -340,11 +345,10 @@ if "fecha_login" not in st.session_state:
     st.session_state.fecha_login = None
 
 # Si cambia el día (hora Perú), forzamos re-autenticación de 1 vez al día
-if st.session_state.fecha_login != fecha_hoy_str:
+if st.session_state.fecha_login and st.session_state.fecha_login != fecha_hoy_str:
     st.session_state.logged_in = False
     st.session_state.usuario_rol = None
     st.session_state.usuario_nombre = None
-    st.query_params.clear()
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -849,6 +853,9 @@ if menu_url == "buscar":
                 st.markdown(f"**Principio Activo:** {p_sel['marca']}")
                 st.markdown(f"**Laboratorio / Fabricante:** {p_sel['laboratorio'] or 'No especificado'}")
                 st.markdown(f"**Presentación:** {pres_sel}")
+                st.markdown(f"**Unidades por Caja/Pack:** {u_caja} u.")
+                if pres_sel == "Tableta / Cápsula":
+                    st.markdown(f"**Unidades por Blíster:** {p_sel['unidades_por_blister']} u.")
                 st.markdown(f"**Vencimiento:** {vence_fmt}")
                 st.markdown(f"**Stock Físico:** {cajas_enteras} Cajas + {sueltas} Unidades *(Total: {tot_u} u.)*")
                 
@@ -893,6 +900,12 @@ if menu_url == "buscar":
                             idx_pres = opciones_pres.index(p_sel['presentacion']) if p_sel['presentacion'] in opciones_pres else 0
                             edit_presentacion = st.selectbox("Presentación del Producto", opciones_pres, index=idx_pres)
                             
+                            edit_unidades_caja = st.number_input("Unidades por Caja / Pack", min_value=1, value=int(p_sel['unidades_por_caja'] or 1), step=1)
+                            if edit_presentacion == "Tableta / Cápsula":
+                                edit_unidades_blister = st.number_input("Unidades por Blíster", min_value=1, value=int(p_sel['unidades_por_blister'] or 1), step=1)
+                            else:
+                                edit_unidades_blister = 1
+                            
                             fecha_defecto = p_sel['fecha_vencimiento'] if p_sel['fecha_vencimiento'] else obtener_fecha_hoy()
                             edit_vence = st.date_input("Fecha de Vencimiento", value=fecha_defecto, format="DD/MM/YYYY")
                             
@@ -908,8 +921,8 @@ if menu_url == "buscar":
                                 edit_lab_clean = str(edit_laboratorio).strip().encode('latin1', errors='ignore').decode('latin1')
                                 
                                 ejecutar_query(
-                                    "UPDATE productos SET nombre=%s, marca=%s, laboratorio=%s, presentacion=%s, fecha_vencimiento=%s, stock_actual_unidades=%s, precio_costo_unidad=%s, precio_venta_unidad=%s, precio_venta_blister=%s WHERE id_producto=%s",
-                                    (edit_nombre_clean, edit_marca_clean, edit_lab_clean, edit_presentacion, edit_vence, edit_stock, edit_costo, edit_venta_u, edit_venta_b, id_p),
+                                    "UPDATE productos SET nombre=%s, marca=%s, laboratorio=%s, presentacion=%s, unidades_por_caja=%s, unidades_por_blister=%s, fecha_vencimiento=%s, stock_actual_unidades=%s, precio_costo_unidad=%s, precio_venta_unidad=%s, precio_venta_blister=%s WHERE id_producto=%s",
+                                    (edit_nombre_clean, edit_marca_clean, edit_lab_clean, edit_presentacion, edit_unidades_caja, edit_unidades_blister, edit_vence, edit_stock, edit_costo, edit_venta_u, edit_venta_b, id_p),
                                     commit=True
                                 )
                                 cargar_productos_db.clear()
@@ -1002,6 +1015,7 @@ if menu_url == "buscar":
                 "Principio Activo": p['marca'],
                 "Laboratorio / Fabricante": p['laboratorio'] if p['laboratorio'] else "-",
                 "Presentación": pres,
+                "Unid./Caja": u_caja,
                 "Stock (Cajas + Unid.)": f"{cajas_enteras} Cajas + {sueltas} Unid.",
                 "Stock Unit. Total": tot_u,
                 "Costo Unit. S/.": p['precio_costo_unidad'],
