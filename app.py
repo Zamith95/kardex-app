@@ -3,11 +3,10 @@ import base64
 from datetime import datetime, timedelta, timezone
 import io
 import pandas as pd
+import psycopg2
+import psycopg2.extras
 import openpyxl
 import urllib.parse
-
-# --- PASO 3: IMPORTACIÓN DE MÓDULO BASE DE DATOS CACHEADO ---
-import database as db
 
 # Mantenemos try/except para pytz para prevenir caídas de entorno
 try:
@@ -216,8 +215,102 @@ def generar_pdf_bonito(df_datos, titulo_reporte, subti_reporte, es_inventario=Tr
     buffer.close()
     return pdf_bytes
 
+
+# ==============================================================================
+# PASO 1: CONFIGURAR LA CONEXIÓN A POSTGRESQL (NEON / STREAMLIT CLOUD) CON UTF8
+# ==============================================================================
+
+try:
+    _db = st.secrets["postgres"]
+    DB_HOST = _db["host"]
+    DB_NAME = _db["database"]
+    DB_USER = _db["user"]
+    DB_PASS = _db["password"]
+    DB_PORT = _db["port"]
+except Exception:
+    DB_HOST = "localhost"
+    DB_NAME = "kardex_db"
+    DB_USER = "postgres"
+    DB_PASS = "admin123"
+    DB_PORT = "5432"
+
+def obtener_conexion():
+    """Función de Paso 1: Establece y retorna la conexión a PostgreSQL con codificación UTF8"""
+    conn = psycopg2.connect(
+        host=DB_HOST, 
+        database=DB_NAME, 
+        user=DB_USER, 
+        password=DB_PASS,
+        port=DB_PORT
+    )
+    conn.set_client_encoding('UTF8')
+    return conn
+
+def ejecutar_query(query, params=None, commit=False, fetch=False):
+    conn = None
+    resultado = None
+    
+    try:
+        conn = obtener_conexion()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        if params:
+            cur.execute(query, params)
+        else:
+            cur.execute(query)
+            
+        if commit:
+            conn.commit()
+            
+        if fetch:
+            resultado = cur.fetchall()
+            
+        cur.close()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        
+        try:
+            if hasattr(e, 'cursor') and e.cursor and e.cursor.statusmessage:
+                error_bytes = str(e.cursor.statusmessage).encode('utf-8', errors='replace')
+            else:
+                error_bytes = str(e).encode('utf-8', errors='replace')
+            error_msg = error_bytes.decode('utf-8', errors='replace')
+        except Exception:
+            error_msg = "Error de base de datos. Verifique los nombres de las tablas o tipos de datos."
+                
+        st.error(f"❌ Error en la Base de Datos: {error_msg}")
+        st.stop()
+    finally:
+        if conn:
+            conn.close()
+            
+    return resultado
+
+# OPTIMIZACIÓN DE VELOCIDAD: Caché mantenida en memoria
+@st.cache_data
+def cargar_productos_db():
+    query = "SELECT id_producto, nombre, marca, laboratorio, presentacion, stock_actual_unidades, precio_costo_unidad, precio_venta_unidad, precio_venta_blister, fecha_vencimiento, unidades_por_caja, unidades_por_blister FROM productos ORDER BY nombre ASC"
+    res_raw = ejecutar_query(query, fetch=True)
+    
+    productos = []
+    if res_raw:
+        for p in res_raw:
+            p_limpio = dict(p)
+            for campo in ['nombre', 'marca', 'laboratorio', 'presentacion']:
+                val = p[campo]
+                if val is not None:
+                    try:
+                        p_limpio[campo] = str(val).encode('utf-8', errors='ignore').decode('utf-8')
+                    except Exception:
+                        p_limpio[campo] = str(val).encode('latin1', errors='ignore').decode('latin1', errors='ignore')
+                else:
+                    p_limpio[campo] = ""
+            productos.append(p_limpio)
+    return productos
+
 # =====================================================================
-# INICIALIZACIÓN DE SESSION STATE Y CONFIGURACIÓN PERSISTENTE DIARIA
+# INICIALIZACIÓN DE SESSION STATE Y CONFIGURACIÓN PERSISTENTE DIARIA (ZONA PERÚ)
 # =====================================================================
 def obtener_fecha_hoy():
     if pytz:
@@ -225,6 +318,7 @@ def obtener_fecha_hoy():
             return datetime.now(pytz.timezone("America/Lima")).date()
         except Exception:
             pass
+    # Fallback exacto para Perú (UTC-5)
     tz_peru = timezone(timedelta(hours=-5))
     return datetime.now(tz_peru).date()
 
@@ -242,7 +336,7 @@ if "auth_user" in cookie_params and "auth_date" in cookie_params:
     date_cookie = cookie_params.get("auth_date")
     
     if date_cookie == fecha_hoy_str and ("logged_in" not in st.session_state or not st.session_state.logged_in):
-        res_u = db.ejecutar_query("SELECT usuario, rol FROM usuarios WHERE usuario = %s", (user_cookie,), fetch=True)
+        res_u = ejecutar_query("SELECT usuario, rol FROM usuarios WHERE usuario = %s", (user_cookie,), fetch=True)
         if res_u:
             u_data = res_u[0]
             st.session_state.logged_in = True
@@ -253,6 +347,7 @@ if "auth_user" in cookie_params and "auth_date" in cookie_params:
 if "fecha_login" not in st.session_state:
     st.session_state.fecha_login = None
 
+# Si cambia el día (hora Perú), forzamos re-autenticación de 1 vez al día
 if st.session_state.fecha_login and st.session_state.fecha_login != fecha_hoy_str:
     st.session_state.logged_in = False
     st.session_state.usuario_rol = None
@@ -267,31 +362,32 @@ if "usuario_nombre" not in st.session_state:
 if "pantalla_activa" not in st.session_state:
     st.session_state.pantalla_activa = "buscar"
 
-# --- PASO 3: REEMPLAZO DE CÁRGA DE CONFIGURACIÓN INICIAL POR FUNCIÓN CACHEADA ---
-config = db.cargar_configuracion_db()
+# CARGAR CONFIGURACIÓN DESDE LA BASE DE DATOS
+config_db = ejecutar_query("SELECT nombre_negocio, tema_color, logo_bytes, fondo_bytes FROM configuracion WHERE id = 1", fetch=True)
 
-if config:
-    NOMBRE_NEGOCIO = config["nombre_negocio"]
-    TEMA_COLOR = config["tema_color"]
-    LOGO_BYTES = config["logo_bytes"]
-    FONDO_BYTES = config["fondo_bytes"]
+if config_db:
+    res = config_db[0]
+    nombre_negocio_db = res['nombre_negocio']
+    tema_color_db = res['tema_color']
+    logo_bytes_db = res['logo_bytes']
+    fondo_bytes_db = res['fondo_bytes']
 else:
-    NOMBRE_NEGOCIO = "Mi Negocio"
-    TEMA_COLOR = "#000000"
-    LOGO_BYTES = None
-    FONDO_BYTES = None
+    nombre_negocio_db = "HOME MEDIC"
+    tema_color_db = "Celeste Pastel"
+    logo_bytes_db = None
+    fondo_bytes_db = None
 
 if "nombre_negocio" not in st.session_state:
-    st.session_state.nombre_negocio = NOMBRE_NEGOCIO
+    st.session_state.nombre_negocio = nombre_negocio_db
 
 if "tema_color" not in st.session_state:
-    st.session_state.tema_color = TEMA_COLOR
+    st.session_state.tema_color = tema_color_db
 
 if "logo_bytes" not in st.session_state:
-    st.session_state.logo_bytes = LOGO_BYTES
+    st.session_state.logo_bytes = logo_bytes_db
 
 if "fondo_bytes" not in st.session_state:
-    st.session_state.fondo_bytes = FONDO_BYTES
+    st.session_state.fondo_bytes = fondo_bytes_db
 
 if "reset_form" not in st.session_state:
     st.session_state.reset_form = 0
@@ -306,7 +402,7 @@ if "reset_fecha_version" not in st.session_state:
     st.session_state.reset_fecha_version = 0
 
 # =====================================================================
-# MOTOR DE ESTILOS CSS DINÁMICOS Y TARJETAS DE PRECIO
+# MOTOR DE ESTILOS CSS DINÁMICOS Y TARJETAS DE PRECIO (OPTIMIZADO)
 # =====================================================================
 config_temas = {
     "Celeste Pastel": {
@@ -360,6 +456,7 @@ else:
 
 style_css = f"""
 <style>
+/* 1. PREVENCIÓN DE DESVANECIMIENTO Y SCROLL SUAVE */
 html, body, .stApp, .main, [data-testid="stAppViewContainer"] {{
     overscroll-behavior-y: none !important;
     overscroll-behavior-x: none !important;
@@ -427,6 +524,7 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
     color: #0D47A1;
 }}
 
+/* ESTILOS DE NAVEGACIÓN MULTIPESTAÑA */
 .nav-link-btn {{
     display: block;
     width: 100%;
@@ -470,7 +568,7 @@ def modal_login():
         submit = st.form_submit_button("Ingresar al Sistema", use_container_width=True, type="primary")
 
         if submit:
-            res = db.ejecutar_query("SELECT usuario, password, rol FROM usuarios WHERE usuario = %s AND password = %s", (usr.strip(), pwd.strip()), fetch=True)
+            res = ejecutar_query("SELECT usuario, password, rol FROM usuarios WHERE usuario = %s AND password = %s", (usr.strip(), pwd.strip()), fetch=True)
             if res:
                 u_data = res[0]
                 st.session_state.logged_in = True
@@ -499,29 +597,32 @@ if not st.session_state.logged_in:
         modal_login()
     st.stop()
 
+# --- CARGAR TODOS LOS PRODUCTOS ---
+todos_productos = cargar_productos_db()
+
 # =====================================================================
-# PASO 4: MOVER CONSULTAS Y ALERTAS A SUS RESPECTIVAS FUNCIONES
+# SISTEMA DE ALERTAS EN VENTANA MODAL
 # =====================================================================
+alertas_sin_stock = []
+alertas_tabletas_bajo = []
+alertas_otros_bajo = []
+
+if todos_productos:
+    for p in todos_productos:
+        stock = p['stock_actual_unidades']
+        pres = p['presentacion']
+        
+        if stock == 0:
+            alertas_sin_stock.append(f"{p['nombre']} ({p['marca']}) - [{pres}]")
+        elif pres == "Tableta / Cápsula" and stock <= 10:
+            alertas_tabletas_bajo.append(f"{p['nombre']} — [{pres}] — Quedan: {stock} u.")
+        elif pres != "Tableta / Cápsula" and stock < 3:
+            alertas_otros_bajo.append(f"{p['nombre']} — [{pres}] — Quedan: {stock} u.")
+
+total_alertas = len(alertas_sin_stock) + len(alertas_tabletas_bajo) + len(alertas_otros_bajo)
+
 @st.dialog("🚨 NOTIFICACIONES DE STOCK CRÍTICO")
 def mostrar_modal_alertas():
-    # Se consulta la lista de productos únicamente al abrir las alertas
-    prods = db.cargar_productos_db()
-    alertas_sin_stock = []
-    alertas_tabletas_bajo = []
-    alertas_otros_bajo = []
-
-    if prods:
-        for p in prods:
-            stock = p['stock_actual_unidades']
-            pres = p['presentacion']
-            
-            if stock == 0:
-                alertas_sin_stock.append(f"{p['nombre']} ({p['marca']}) - [{pres}]")
-            elif pres == "Tableta / Cápsula" and stock <= 10:
-                alertas_tabletas_bajo.append(f"{p['nombre']} — [{pres}] — Quedan: {stock} u.")
-            elif pres != "Tableta / Cápsula" and stock < 3:
-                alertas_otros_bajo.append(f"{p['nombre']} — [{pres}] — Quedan: {stock} u.")
-
     with st.container(height=400):
         if alertas_sin_stock:
             st.error(f"🔴 **PRODUCTOS SIN STOCK (0 UNIDADES):** ({len(alertas_sin_stock)})")
@@ -607,8 +708,9 @@ def modal_agregar_producto_compra(lista_productos):
                     st.rerun()
 
 # =====================================================================
-# BARRA LATERAL MULTIPESTAÑA
+# BARRA LATERAL MULTIPESTAÑA REESTRUCTURADA Y OPTIMIZADA
 # =====================================================================
+
 col_info, col_alerta = st.sidebar.columns([3, 1])
 
 with col_info:
@@ -616,8 +718,9 @@ with col_info:
     st.markdown(f"**Usuario:** {rol_actual}")
 
 with col_alerta:
-    if st.button("🚨", key="btn_alerta_icono", help="Notificaciones de stock bajo o agotado", use_container_width=False):
-        mostrar_modal_alertas()
+    if total_alertas > 0:
+        if st.button("🚨", key="btn_alerta_icono", help=f"Hay {total_alertas} artículo(s) con stock bajo o agotado", use_container_width=False):
+            mostrar_modal_alertas()
 
 if st.session_state.get("logo_bytes"):
     st.sidebar.image(base64.b64decode(st.session_state.logo_bytes), use_container_width=True)
@@ -674,9 +777,6 @@ st.title(f"💊 Kardex - {st.session_state.nombre_negocio}")
 # =====================================================================
 if menu_url == "buscar":
     st.header("🔍 Buscador de Medicamentos")
-    
-    # --- PASO 4: Carga de productos diferida únicamente cuando se usa la pestaña ---
-    todos_productos = db.cargar_productos_db()
     
     if not todos_productos:
         st.info("Aún no hay productos registrados.")
@@ -837,12 +937,12 @@ if menu_url == "buscar":
                                 edit_marca_clean = str(edit_marca).strip().encode('latin1', errors='ignore').decode('latin1')
                                 edit_lab_clean = str(edit_laboratorio).strip().encode('latin1', errors='ignore').decode('latin1')
                                 
-                                db.ejecutar_query(
+                                ejecutar_query(
                                     "UPDATE productos SET nombre=%s, marca=%s, laboratorio=%s, presentacion=%s, unidades_por_caja=%s, unidades_por_blister=%s, fecha_vencimiento=%s, stock_actual_unidades=%s, precio_costo_unidad=%s, precio_venta_unidad=%s, precio_venta_blister=%s WHERE id_producto=%s",
                                     (edit_nombre_clean, edit_marca_clean, edit_lab_clean, edit_presentacion, edit_unidades_caja, edit_unidades_blister, edit_vence, edit_stock, edit_costo, edit_venta_u, edit_venta_b, id_p),
                                     commit=True
                                 )
-                                db.cargar_productos_db.clear()
+                                cargar_productos_db.clear()
                                 st.toast("💾 ¡Cambios guardados en la base de datos!", icon="✅")
                                 st.success("🎉 ¡Producto editado exitosamente!")
                                 st.session_state.editando_id = None
@@ -853,9 +953,9 @@ if menu_url == "buscar":
                         col_elim1, col_elim2 = st.columns(2)
                         with col_elim1:
                             if st.button("Sí, Eliminar", key="si_elim"):
-                                db.ejecutar_query("DELETE FROM movimientos WHERE id_producto=%s", (id_p,), commit=True)
-                                db.ejecutar_query("DELETE FROM productos WHERE id_producto=%s", (id_p,), commit=True)
-                                db.cargar_productos_db.clear()
+                                ejecutar_query("DELETE FROM movimientos WHERE id_producto=%s", (id_p,), commit=True)
+                                ejecutar_query("DELETE FROM productos WHERE id_producto=%s", (id_p,), commit=True)
+                                cargar_productos_db.clear()
                                 st.success("¡Eliminado correctamente!")
                                 st.rerun()
                         with col_elim2:
@@ -875,7 +975,7 @@ if menu_url == "buscar":
                     FROM movimientos 
                     WHERE id_producto = %s AND tipo_movimiento = 'VENTA'
                 """
-                ventas_prod = db.ejecutar_query(query_ventas, (id_p,), fetch=True)
+                ventas_prod = ejecutar_query(query_ventas, (id_p,), fetch=True)
                 
                 v_semana_tot, c_semana_tot, g_semana_tot = 0.0, 0.0, 0.0
                 v_mes_tot, c_mes_tot, g_mes_tot = 0.0, 0.0, 0.0
@@ -998,12 +1098,10 @@ if menu_url == "buscar":
                     )
 
 # =====================================================================
-# PANTALLA 2: REGISTRAR NUEVO PRODUCTO
+# PANTALLA 2: REGISTRAR NUEVO PRODUCTO (CON PLACEHOLDERS Y AUTORELLENADO)
 # =====================================================================
 elif menu_url == "registrar":
     st.header("📝 Registrar Nuevo Producto en el Inventario")
-    
-    todos_productos = db.cargar_productos_db()
     
     if st.session_state.usuario_rol != "admin":
         st.warning("🔒 Acceso Restringido: Tu cuenta de Vendedor te permite visualizar productos pero no registrar nuevos. Solicitante a un Administrador.")
@@ -1014,9 +1112,10 @@ elif menu_url == "registrar":
         st.session_state.reset_id = 0
     k = st.session_state.reset_id
     
-    labs_query = db.ejecutar_query("SELECT DISTINCT laboratorio FROM productos WHERE laboratorio IS NOT NULL AND laboratorio != '' ORDER BY laboratorio ASC", fetch=True)
+    labs_query = ejecutar_query("SELECT DISTINCT laboratorio FROM productos WHERE laboratorio IS NOT NULL AND laboratorio != '' ORDER BY laboratorio ASC", fetch=True)
     laboratorios_existentes = [l['laboratorio'] for l in labs_query] if labs_query else []
 
+    # BASE DE DATOS DE PLANTILLAS REGISTRADAS PARA AUTORELLENAR
     dict_plantillas = {f"{p['nombre']} ({p['marca']})": p for p in todos_productos} if todos_productos else {}
     prod_base_sel = st.selectbox(
         "💡 Basarse en un producto ya registrado (Opcional - Autorrellena los datos):",
@@ -1040,6 +1139,7 @@ elif menu_url == "registrar":
     
     st.subheader("Información Básica")
     
+    # MODIFICACIÓN APLICADA: Uso de 'placeholder' para borrado automático al enfocar o escribir
     nombre_prod = st.text_input(
         "Nombre Comercial del Producto / Marca", 
         value=val_nombre_defecto, 
@@ -1201,8 +1301,8 @@ elif menu_url == "registrar":
                 fecha_venc
             )
             
-            db.ejecutar_query(query_insert, valores, commit=True)
-            db.cargar_productos_db.clear()
+            ejecutar_query(query_insert, valores, commit=True)
+            cargar_productos_db.clear()
             
             st.session_state.mensaje_exito = f"🎉 ¡Producto '{nombre_prod}' registrado con éxito!"
             st.session_state.reset_id += 1
@@ -1213,8 +1313,6 @@ elif menu_url == "registrar":
 # =====================================================================
 elif menu_url == "venta":
     st.header("🧾 Registrar Boleta / Salida Multiproducto")
-    
-    todos_productos = db.cargar_productos_db()
     
     if "reset_boleta_item" not in st.session_state:
         st.session_state.reset_boleta_item = 0
@@ -1243,7 +1341,7 @@ elif menu_url == "venta":
         st.subheader("➕ Agregar Producto a la Boleta")
     with col_btn_reload:
         if st.button("🔄", help="actualizar productos", use_container_width=True):
-            db.cargar_productos_db.clear()
+            cargar_productos_db.clear()
             st.rerun()
     
     if not todos_productos:
@@ -1388,19 +1486,19 @@ elif menu_url == "venta":
                             
                         query_mov = """INSERT INTO movimientos (fecha, tipo_movimiento, id_producto, unidades, blisters, cajas, monto_total, costo_total_capital, ingreso_neto) 
                                        VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s)"""
-                        db.ejecutar_query(
+                        ejecutar_query(
                             query_mov, 
                             (fecha_salida, concepto_tipo, item['id_producto'], item['unidades'], item['blisters'], item['monto_total'], item['costo_total'], ingreso_neto), 
                             commit=True
                         )
                         
                         query_stock = "UPDATE productos SET stock_actual_unidades = stock_actual_unidades - %s WHERE id_producto = %s"
-                        db.ejecutar_query(query_stock, (item['total_unidades'], item['id_producto']), commit=True)
+                        ejecutar_query(query_stock, (item['total_unidades'], item['id_producto']), commit=True)
                     
                     st.session_state.boleta_ventas = []
                     st.session_state.reset_fecha_version += 1
                     st.session_state.reset_boleta_item += 1
-                    db.cargar_productos_db.clear()
+                    cargar_productos_db.clear()
                     
                     st.success("🎉 ¡Todas las operaciones de la boleta fueron procesadas y la fecha regresó automáticamente a hoy!")
                     st.balloons()
@@ -1411,8 +1509,6 @@ elif menu_url == "venta":
 # =====================================================================
 elif menu_url == "compra":
     st.header("📥 Registro de Ingreso de Compras")
-    
-    todos_productos = db.cargar_productos_db()
     
     if st.session_state.usuario_rol != "admin":
         st.warning("🔒 Acceso Restringido: Tu cuenta de Vendedor te permite visualizar pero no registrar o modificar datos de Compras.")
@@ -1520,7 +1616,7 @@ elif menu_url == "compra":
                         
                         query_mov = """INSERT INTO movimientos (fecha, tipo_movimiento, id_producto, unidades, blisters, cajas, monto_total, costo_total_capital, ingreso_neto) 
                                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0)"""
-                        db.ejecutar_query(
+                        ejecutar_query(
                             query_mov, 
                             (fecha_ingreso_compra, detalle_tipo, item['id_producto'], item['unidades'], item['blisters'], item['cajas'], item['costo_total'], item['costo_total']), 
                             commit=True
@@ -1531,7 +1627,7 @@ elif menu_url == "compra":
                                              precio_costo_unidad = CASE WHEN %s > 0 THEN %s ELSE precio_costo_unidad END,
                                              fecha_vencimiento = %s
                                          WHERE id_producto = %s"""
-                        db.ejecutar_query(
+                        ejecutar_query(
                             query_stock, 
                             (item['total_unidades'], item['costo_total'], costo_u_nuevo, item['fecha_vencimiento'], item['id_producto']), 
                             commit=True
@@ -1539,7 +1635,7 @@ elif menu_url == "compra":
                     
                     st.session_state.carrito_compras = []
                     st.session_state.reset_compra_version += 1
-                    db.cargar_productos_db.clear()
+                    cargar_productos_db.clear()
                     st.session_state.mensaje_exito_compra = f"🎉 **¡Compra registrada con éxito!** Se procesó el comprobante **{tipo_doc_compra} - {num_doc_compra if num_doc_compra else 'S/N'}** y el inventario se actualizó."
                     st.rerun()
 
@@ -1562,6 +1658,9 @@ elif menu_url == "reportes":
     
     st.markdown("---")
 
+    # -------------------------------------------------------------------
+    # REPORTE 1: REPORTE DE VENTAS
+    # -------------------------------------------------------------------
     if tipo_reporte_sel == "💵 Reporte de Ventas":
         st.subheader("💵 Reporte Exclusivo de Ventas y Ganancias")
         
@@ -1591,7 +1690,7 @@ elif menu_url == "reportes":
             WHERE m.fecha BETWEEN %s AND %s AND m.tipo_movimiento = 'VENTA'
             ORDER BY m.fecha DESC, p.nombre ASC
         """
-        ventas_data = db.ejecutar_query(query_v, (fecha_inicio, fecha_fin), fetch=True)
+        ventas_data = ejecutar_query(query_v, (fecha_inicio, fecha_fin), fetch=True)
         
         if not ventas_data:
             st.info("No se registran ventas en este rango de fechas.")
@@ -1662,6 +1761,9 @@ elif menu_url == "reportes":
                         use_container_width=True
                     )
 
+    # -------------------------------------------------------------------
+    # REPORTE 2: REPORTE DE COMPRAS
+    # -------------------------------------------------------------------
     elif tipo_reporte_sel == "🛒 Reporte de Compras":
         st.subheader("🛒 Reporte Detallado de Compras e Inversión")
         
@@ -1691,7 +1793,7 @@ elif menu_url == "reportes":
             WHERE m.fecha BETWEEN %s AND %s AND m.tipo_movimiento LIKE 'INGRESO%%'
             ORDER BY m.fecha DESC, p.nombre ASC
         """
-        compras_data = db.ejecutar_query(query_compras, (f_inicio_c, f_fin_c), fetch=True)
+        compras_data = ejecutar_query(query_compras, (f_inicio_c, f_fin_c), fetch=True)
         
         if not compras_data:
             st.info("No se registraron compras en el período seleccionado.")
@@ -1753,6 +1855,9 @@ elif menu_url == "reportes":
                         use_container_width=True
                     )
 
+    # -------------------------------------------------------------------
+    # REPORTE 3: REPORTE DE MOVIMIENTOS
+    # -------------------------------------------------------------------
     elif tipo_reporte_sel == "🔄 Reporte de Movimientos":
         st.subheader("🔄 Historial Completo de Movimientos y Entradas/Salidas")
         
@@ -1781,7 +1886,7 @@ elif menu_url == "reportes":
             WHERE m.fecha BETWEEN %s AND %s
             ORDER BY m.fecha DESC, p.nombre ASC
         """
-        movs = db.ejecutar_query(query_m, (fecha_inicio_m, fecha_fin_m), fetch=True)
+        movs = ejecutar_query(query_m, (fecha_inicio_m, fecha_fin_m), fetch=True)
         
         if not movs:
             st.info("No se registran movimientos en este rango de fechas.")
@@ -1850,6 +1955,9 @@ elif menu_url == "reportes":
                         use_container_width=True
                     )
 
+    # -------------------------------------------------------------------
+    # REPORTE 4: PRODUCTOS PRÓXIMOS A VENCER
+    # -------------------------------------------------------------------
     elif tipo_reporte_sel == "⏰ Productos Próximos a Vencer":
         st.subheader("⏰ Alerta Preventiva de Vencimientos")
         
@@ -1864,7 +1972,7 @@ elif menu_url == "reportes":
             WHERE fecha_vencimiento IS NOT NULL AND fecha_vencimiento <= %s
             ORDER BY fecha_vencimiento ASC
         """
-        prods_venc = db.ejecutar_query(query_venc, (fecha_limite,), fetch=True)
+        prods_venc = ejecutar_query(query_venc, (fecha_limite,), fetch=True)
         
         if not prods_venc:
             st.success(f"🎉 ¡Excelente! No hay productos que vencerán dentro de los próximos {dias_limite} días.")
@@ -1888,6 +1996,9 @@ elif menu_url == "reportes":
             st.warning(f"⚠️ Se encontraron **{len(df_v)}** producto(s) en riesgo de vencimiento dentro de los próximos {dias_limite} días.")
             st.dataframe(df_v, use_container_width=True)
 
+    # -------------------------------------------------------------------
+    # REPORTE 5: RANKING DE PRODUCTOS
+    # -------------------------------------------------------------------
     elif tipo_reporte_sel == "🏆 Ranking de Productos Más / Menos Vendidos":
         st.subheader("🏆 Productos Más y Menos Vendidos")
         
@@ -1900,7 +2011,7 @@ elif menu_url == "reportes":
             GROUP BY p.id_producto, p.nombre, p.marca, p.presentacion
             ORDER BY unidades_vendidas DESC
         """
-        ranking_data = db.ejecutar_query(query_rank, fetch=True)
+        ranking_data = ejecutar_query(query_rank, fetch=True)
         
         if ranking_data:
             df_rank = pd.DataFrame(ranking_data, columns=["Producto", "Principio Activo", "Presentación", "Unidades Vendidas", "Total Recaudado (S/.)"])
@@ -1950,12 +2061,11 @@ elif menu_url == "config":
                     fondo_b64 = base64.b64encode(fondo_file.read()).decode('utf-8')
                     st.session_state.fondo_bytes = fondo_b64
                     
-                db.ejecutar_query(
+                ejecutar_query(
                     "UPDATE configuracion SET nombre_negocio=%s, tema_color=%s, logo_bytes=%s, fondo_bytes=%s WHERE id=1",
                     (nuevo_nombre, nuevo_tema, logo_b64, fondo_b64),
                     commit=True
                 )
-                db.cargar_configuracion_db.clear()
                 
                 st.toast("⚙️ ¡Configuración guardada exitosamente!", icon="✅")
                 st.rerun()
@@ -1983,7 +2093,7 @@ elif menu_url == "usuarios" and st.session_state.usuario_rol == "admin":
                 st.error("⚠️ Todos los campos son obligatorios.")
             else:
                 try:
-                    db.ejecutar_query(
+                    ejecutar_query(
                         "INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)",
                         (u_nombre.strip(), u_pass.strip(), u_rol),
                         commit=True
@@ -1995,7 +2105,7 @@ elif menu_url == "usuarios" and st.session_state.usuario_rol == "admin":
 
     st.markdown("---")
     st.subheader("📋 Usuarios Registrados")
-    users = db.ejecutar_query("SELECT id, usuario, rol FROM usuarios ORDER BY id ASC", fetch=True)
+    users = ejecutar_query("SELECT id, usuario, rol FROM usuarios ORDER BY id ASC", fetch=True)
     if users:
         df_u = pd.DataFrame(users, columns=["ID", "Usuario", "Rol"])
         st.dataframe(df_u, use_container_width=True)
