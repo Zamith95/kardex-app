@@ -73,15 +73,8 @@ def ejecutar_query(query, params=None, fetch=False, commit=False):
                 return []
             return [tuple(x) for x in df.to_numpy()]
         except Exception as e:
-            st.cache_data.clear()
-            try:
-                df = conn.query(query_mod, params=formatted_params if formatted_params else None, ttl=0)
-                if df is None or df.empty:
-                    return []
-                return [tuple(x) for x in df.to_numpy()]
-            except Exception as inner_e:
-                st.error(f"Error en consulta SQL: {inner_e}")
-                return []
+            st.error(f"Error en consulta SQL: {e}")
+            return []
     else:
         try:
             with conn.session as session:
