@@ -524,6 +524,34 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
     font-weight: 900;
     color: #0D47A1;
 }}
+
+/* ESTILOS DE NAVEGACIÓN MULTIPESTAÑA CON ENLACES NATIVOS */
+.nav-link-btn {{
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    border-radius: 8px;
+    text-decoration: none !important;
+    font-weight: 600;
+    font-size: 14px;
+    text-align: left;
+    transition: all 0.2s ease-in-out;
+}}
+.nav-link-active {{
+    background-color: #0D47A1 !important;
+    color: #FFFFFF !important;
+    box-shadow: 0px 2px 6px rgba(0,0,0,0.2);
+}}
+.nav-link-inactive {{
+    background-color: rgba(255, 255, 255, 0.6);
+    color: {tema_actual['sidebar_text']} !important;
+    border: 1px solid rgba(0,0,0,0.1);
+}}
+.nav-link-inactive:hover {{
+    background-color: rgba(255, 255, 255, 0.9);
+    border-color: #0D47A1;
+}}
 </style>
 
 <!-- 2. SOLUCIÓN PARA AUTO-OCULTAR BARRA LATERAL EN MÓVILES AL HACER CLIC -->
@@ -531,7 +559,7 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
 document.addEventListener('click', function(e) {{
     const isMobile = window.innerWidth <= 768;
     if (isMobile) {{
-        const isSidebarButton = e.target.closest('section[data-testid="stSidebar"] button');
+        const isSidebarButton = e.target.closest('section[data-testid="stSidebar"] button, section[data-testid="stSidebar"] a');
         if (isSidebarButton) {{
             setTimeout(() => {{
                 // Simula clic en el botón de cerrar la barra lateral de Streamlit
@@ -672,7 +700,7 @@ def modal_agregar_producto_compra(lista_productos):
         
         if tot_unidades_compra > 0 and costo_total_item > 0:
             costo_u_calc = costo_total_item / tot_unidades_compra
-            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculado:** S/. {costo_u_calc:.4f} por unidad.")
+            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculated:** S/. {costo_u_calc:.4f} por unidad.")
             
         st.markdown("---")
         col_m_btn1, col_m_btn2 = st.columns([1, 1])
@@ -702,7 +730,7 @@ def modal_agregar_producto_compra(lista_productos):
                     st.rerun()
 
 # =====================================================================
-# BARRA LATERAL MULTIPESTAÑA REESTRUCTURADA Y OPTIMIZADA
+# BARRA LATERAL MULTIPESTAÑA REESTRUCTURADA Y OPTIMIZADA CON ENLACES NATIVOS (SOPORTE MULTIPESTAÑA)
 # =====================================================================
 
 # --- 1. CABECERA LATERAL (Alertas y Datos de Usuario) ---
@@ -726,7 +754,7 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 
-# --- 3. MENÚ DE NAVEGACIÓN PRINCIPAL MEDIANTE BOTONES NATIVOS ---
+# --- 3. MENÚ DE NAVEGACIÓN MULTIPESTAÑA MEDIANTE HIPERVÍNCULOS NATIVOS <a> ---
 opciones_menu = [
     ("buscar", "Buscar Producto"),
     ("registrar", "Registrar Productos"),
@@ -739,16 +767,26 @@ opciones_menu = [
 if st.session_state.get("usuario_rol") == "admin":
     opciones_menu.append(("usuarios", "Gestionar Usuarios"))
 
-# Dibujar botones de navegación nativos de Streamlit
+# Renderizar enlaces HTML nativos para permitir anticlic / clic central / abrir en nueva pestaña
+auth_usr_param = st.query_params.get("auth_user", "")
+auth_date_param = st.query_params.get("auth_date", "")
+
 for id_pantalla, nombre_boton in opciones_menu:
     es_activo = (st.session_state.pantalla_activa == id_pantalla)
-    tipo_btn = "primary" if es_activo else "secondary"
+    clase_css = "nav-link-btn nav-link-active" if es_activo else "nav-link-btn nav-link-inactive"
     label_btn = f"🔹 {nombre_boton}" if es_activo else f"▫️ {nombre_boton}"
     
-    if st.sidebar.button(label_btn, key=f"btn_nav_{id_pantalla}", type=tipo_btn, use_container_width=True):
-        st.session_state.pantalla_activa = id_pantalla
-        st.query_params["pantalla"] = id_pantalla
-        st.rerun()
+    # Construcción de la URL dinámica conservando las credenciales activas
+    query_url = f"?pantalla={id_pantalla}"
+    if auth_usr_param and auth_date_param:
+        query_url += f"&auth_user={auth_usr_param}&auth_date={auth_date_param}"
+        
+    st.sidebar.markdown(
+        f"<a href='{query_url}' target='_self' class='{clase_css}'>{label_btn}</a>",
+        unsafe_allow_html=True
+    )
+
+st.sidebar.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
 
 # --- 4. BOTÓN DE SALIDA / PUERTITA ---
 col_vacia, col_puerta = st.sidebar.columns([3, 1])
