@@ -576,7 +576,7 @@ def modal_agregar_producto_compra(lista_productos):
         
         if tot_unidades_compra > 0 and costo_total_item > 0:
             costo_u_calc = costo_total_item / tot_unidades_compra
-            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculado:** S/. {costo_u_calc:.4f} por unidad.")
+            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculated:** S/. {costo_u_calc:.4f} por unidad.")
             
         st.markdown("---")
         col_m_btn1, col_m_btn2 = st.columns([1, 1])
@@ -940,6 +940,11 @@ if menu_url == "buscar":
                 if ventas_prod:
                     for v in ventas_prod:
                         f_v = v[0]
+                        if isinstance(f_v, str):
+                            f_v = datetime.strptime(f_v, "%Y-%m-%d").date()
+                        elif isinstance(f_v, datetime):
+                            f_v = f_v.date()
+
                         if f_v >= inicio_semana:
                             v_semana_tot += float(v[1])
                             c_semana_tot += float(v[2])
@@ -1611,17 +1616,14 @@ elif menu_url == "reportes":
         [
             "🔍 Reporte por Producto",
             "💵 Reporte de Ventas",
-            "🛒 Reporte de Compras",
-            "🔄 Reporte de Movimientos",
-            "⏰ Productos Próximos a Vencer",
-            "🏆 Ranking de Productos Más / Menos Vendidos"
+            "🛒 Reporte de Compras"
         ]
     )
     
     st.markdown("---")
 
     # -----------------------------------------------------------------
-    # NUEVO MÓDULO: REPORTE PERSONALIZADO POR PRODUCTO (KÁRDEX)
+    # MÓDULO: REPORTE PERSONALIZADO POR PRODUCTO (KÁRDEX)
     # -----------------------------------------------------------------
     if tipo_reporte_sel == "🔍 Reporte por Producto":
         st.subheader("🔍 Reporte Detallado y Kárdex por Producto")
@@ -1672,14 +1674,14 @@ elif menu_url == "reportes":
             p_objeto = dict_prods_rep[prod_sel_rep]
             id_p_sel = p_objeto['id_producto']
             
-            # Consulta general de movimientos para este producto en el rango
+            # Consulta adaptada de movimientos compatibles con PostgreSQL / Neon
             query_movs_p = """
                 SELECT m.id_movimiento, m.fecha, m.tipo_movimiento, m.unidades, m.blisters, m.cajas, 
                        m.monto_total, m.costo_total_capital, m.ingreso_neto,
                        p.unidades_por_blister, p.unidades_por_caja
                 FROM movimientos m
                 JOIN productos p ON m.id_producto = p.id_producto
-                WHERE m.id_producto = %s AND m.fecha BETWEEN %s AND %s
+                WHERE m.id_producto = %s AND m.fecha >= %s AND m.fecha <= %s
                 ORDER BY m.fecha ASC, m.id_movimiento ASC
             """
             movs_p_data = db.ejecutar_query(query_movs_p, (id_p_sel, fecha_inicio_p, fecha_fin_p), fetch=True)
@@ -1714,15 +1716,20 @@ elif menu_url == "reportes":
 
                 for m in movs_p_data:
                     f_mov = m[1]
-                    tipo_m = m[2]
-                    u_sueltas = m[3]
-                    b_cant = m[4]
-                    c_cant = m[5]
-                    monto_tot = float(m[6])
-                    costo_tot = float(m[7])
-                    ing_neto = float(m[8])
-                    u_por_b = m[9] or 1
-                    u_por_c = m[10] or 1
+                    if isinstance(f_mov, str):
+                        f_mov = datetime.strptime(f_mov, "%Y-%m-%d").date()
+                    elif isinstance(f_mov, datetime):
+                        f_mov = f_mov.date()
+
+                    tipo_m = str(m[2])
+                    u_sueltas = int(m[3] or 0)
+                    b_cant = int(m[4] or 0)
+                    c_cant = float(m[5] or 0)
+                    monto_tot = float(m[6] or 0.0)
+                    costo_tot = float(m[7] or 0.0)
+                    ing_neto = float(m[8] or 0.0)
+                    u_por_b = int(m[9] or 1)
+                    u_por_c = int(m[10] or 1)
 
                     tot_u_mov = u_sueltas + (b_cant * u_por_b) + int(round(c_cant * u_por_c))
 
@@ -1849,7 +1856,7 @@ elif menu_url == "reportes":
                    m.monto_total, m.costo_total_capital, m.ingreso_neto
             FROM movimientos m
             JOIN productos p ON m.id_producto = p.id_producto
-            WHERE m.fecha BETWEEN %s AND %s AND m.tipo_movimiento = 'VENTA'
+            WHERE m.fecha >= %s AND m.fecha <= %s AND m.tipo_movimiento = 'VENTA'
             ORDER BY m.fecha DESC, p.nombre ASC
         """
         ventas_data = db.ejecutar_query(query_v, (fecha_inicio, fecha_fin), fetch=True)
@@ -1949,7 +1956,7 @@ elif menu_url == "reportes":
             SELECT m.fecha, m.tipo_movimiento, p.nombre, p.marca, p.presentacion, m.unidades, m.blisters, m.cajas, m.costo_total_capital
             FROM movimientos m
             JOIN productos p ON m.id_producto = p.id_producto
-            WHERE m.fecha BETWEEN %s AND %s AND m.tipo_movimiento LIKE 'INGRESO%%'
+            WHERE m.fecha >= %s AND m.fecha <= %s AND m.tipo_movimiento LIKE 'INGRESO%%'
             ORDER BY m.fecha DESC, p.nombre ASC
         """
         compras_data = db.ejecutar_query(query_compras, (f_inicio_c, f_fin_c), fetch=True)
@@ -2013,164 +2020,6 @@ elif menu_url == "reportes":
                         mime="application/pdf",
                         use_container_width=True
                     )
-
-    elif tipo_reporte_sel == "🔄 Reporte de Movimientos":
-        st.subheader("🔄 Historial Completo de Movimientos y Entradas/Salidas")
-        
-        filtro_tiempo_m = st.selectbox("Selecciona Periodo:", ["Hoy", "Esta Semana", "Este Mes", "Rango Personalizado"], key="f_movs")
-        fecha_inicio_m = obtener_fecha_hoy()
-        fecha_fin_m = obtener_fecha_hoy()
-        
-        if filtro_tiempo_m == "Hoy":
-            fecha_inicio_m = obtener_fecha_hoy()
-        elif filtro_tiempo_m == "Esta Semana":
-            fecha_inicio_m = obtener_fecha_hoy() - timedelta(days=obtener_fecha_hoy().weekday())
-        elif filtro_tiempo_m == "Este Mes":
-            fecha_inicio_m = obtener_fecha_hoy().replace(day=1)
-        elif filtro_tiempo_m == "Rango Personalizado":
-            col1, col2 = st.columns(2)
-            with col1:
-                fecha_inicio_m = st.date_input("Desde", obtener_fecha_hoy() - timedelta(days=30), format="DD/MM/YYYY", key="m_desde")
-            with col2:
-                fecha_fin_m = st.date_input("Hasta", obtener_fecha_hoy(), format="DD/MM/YYYY", key="m_hasta")
-
-        query_m = """
-            SELECT m.fecha, m.tipo_movimiento, p.nombre, p.marca, m.unidades, m.blisters, m.monto_total, m.costo_total_capital, m.ingreso_neto,
-                   p.precio_costo_unidad, p.precio_venta_unidad, p.stock_actual_unidades
-            FROM movimientos m
-            JOIN productos p ON m.id_producto = p.id_producto
-            WHERE m.fecha BETWEEN %s AND %s
-            ORDER BY m.fecha DESC, p.nombre ASC
-        """
-        movs = db.ejecutar_query(query_m, (fecha_inicio_m, fecha_fin_m), fetch=True)
-        
-        if not movs:
-            st.info("No se registran movimientos en este rango de fechas.")
-        else:
-            df_movs = pd.DataFrame(movs, columns=[
-                "Fecha", "Tipo Registro", "Producto", "Marca", "U. Movidas", "Blísters", "Total (S/.)", "Costo Capital (S/.)", "Ganancia Neta (S/.)",
-                "Costo Compra Unit.", "Precio Venta Unit.", "Stock Actual"
-            ])
-            
-            df_display_m = df_movs.copy()
-            df_display_m["Fecha"] = pd.to_datetime(df_display_m["Fecha"]).dt.strftime("%d/%m/%Y")
-            
-            st.dataframe(df_display_m, use_container_width=True)
-            
-            df_excel_m = df_movs.copy()
-            df_excel_m.insert(0, "N° Item", range(1, len(df_excel_m) + 1))
-            df_excel_m["Fecha"] = pd.to_datetime(df_excel_m["Fecha"]).dt.strftime("%Y-%m-%d")
-            
-            df_excel_m.columns = [
-                "N° Item", "Fecha de Movimiento", "Tipo de Registro", "Nombre del Producto",
-                "Marca / Laboratorio", "Cant. Unidades Solicitadas", "Cant. Blísters", "Monto de Transacción (S/.)",
-                "Costo de Capital (S/.)", "Ganancia Neta Obtenida (S/.)", "Costo Compra Unitario (S/.)",
-                "Precio Venta Unitario (S/.)", "Stock Físico Restante"
-            ]
-            
-            output_m = io.BytesIO()
-            with pd.ExcelWriter(output_m, engine='openpyxl') as writer:
-                df_excel_m.to_excel(writer, sheet_name="Movimientos", index=False, startrow=4)
-                
-                workbook = writer.book
-                worksheet = writer.sheets["Movimientos"]
-                
-                worksheet["A1"] = f"REPORTE DE MOVIMIENTOS - {st.session_state.nombre_negocio.upper()}"
-                worksheet["A2"] = f"Periodo: {fecha_inicio_m.strftime('%d/%m/%Y')} al {fecha_fin_m.strftime('%d/%m/%Y')}"
-                worksheet["A3"] = f"Generado el: {obtener_fecha_hoy().strftime('%d/%m/%Y')} {datetime.now().strftime('%H:%M')}"
-                
-                for col in worksheet.columns:
-                    max_len = max(len(str(cell.value or '')) for cell in col)
-                    col_letter = col[0].column_letter
-                    worksheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
-                    
-            excel_m_bytes = output_m.getvalue()
-            pdf_m_bytes = generar_pdf_bonito(
-                df_excel_m, 
-                titulo_reporte="Reporte General de Movimientos", 
-                subti_reporte=f"Establecimiento: {st.session_state.nombre_negocio} | Rango: {fecha_inicio_m.strftime('%d/%m/%Y')} al {fecha_fin_m.strftime('%d/%m/%Y')}",
-                es_inventario=False
-            )
-            
-            st.write("")
-            col_m_d1, col_m_d2, col_m_d3 = st.columns([2, 1, 2])
-            with col_m_d2:
-                with st.popover("📥 Descargar", use_container_width=True):
-                    st.download_button(
-                        label="Excel (.xlsx)",
-                        data=excel_m_bytes,
-                        file_name=f"Reporte_Movimientos_{st.session_state.nombre_negocio.replace(' ', '_')}_{fecha_inicio_m}_al_{fecha_fin_m}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                    st.download_button(
-                        label="PDF (.pdf)",
-                        data=pdf_m_bytes,
-                        file_name=f"Reporte_Movimientos_{st.session_state.nombre_negocio.replace(' ', '_')}_{fecha_inicio_m}_al_{fecha_fin_m}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-
-    elif tipo_reporte_sel == "⏰ Productos Próximos a Vencer":
-        st.subheader("⏰ Alerta Preventiva de Vencimientos")
-        
-        dias_limite = st.slider("Mostrar productos que vencerán en los próximos (días):", min_value=15, max_value=365, value=90, step=15)
-        
-        fecha_actual = obtener_fecha_hoy()
-        fecha_limite = fecha_actual + timedelta(days=dias_limite)
-        
-        query_venc = """
-            SELECT nombre, marca, laboratorio, presentacion, stock_actual_unidades, precio_costo_unidad, fecha_vencimiento
-            FROM productos
-            WHERE fecha_vencimiento IS NOT NULL AND fecha_vencimiento <= %s
-            ORDER BY fecha_vencimiento ASC
-        """
-        prods_venc = db.ejecutar_query(query_venc, (fecha_limite,), fetch=True)
-        
-        if not prods_venc:
-            st.success(f"🎉 ¡Excelente! No hay productos que vencerán dentro de los próximos {dias_limite} días.")
-        else:
-            rows_v = []
-            for p in prods_venc:
-                fecha_venc_item = p[6]
-                dias_restantes = (fecha_venc_item - fecha_actual).days if fecha_venc_item else 0
-                rows_v.append({
-                    "Producto": p[0],
-                    "Principio Activo": p[1],
-                    "Laboratorio": p[2] if p[2] else "-",
-                    "Presentación": p[3],
-                    "Stock Unit. Total": p[4],
-                    "Costo Unit. S/.": p[5],
-                    "Riesgo Capital (S/.)": p[4] * p[5],
-                    "Fecha Vencimiento": fecha_venc_item.strftime("%d/%m/%Y") if fecha_venc_item else "-",
-                    "Días Restantes": dias_restantes
-                })
-                
-            df_v = pd.DataFrame(rows_v)
-            st.warning(f"⚠️ Se encontraron **{len(df_v)}** producto(s) en riesgo de vencimiento dentro de los próximos {dias_limite} días.")
-            st.dataframe(df_v, use_container_width=True)
-
-    elif tipo_reporte_sel == "🏆 Ranking de Productos Más / Menos Vendidos":
-        st.subheader("🏆 Productos Más y Menos Vendidos")
-        
-        query_rank = """
-            SELECT p.nombre, p.marca, p.presentacion, 
-                   COALESCE(SUM((m.unidades) + (m.blisters * p.unidades_por_blister)), 0) AS unidades_vendidas,
-                   COALESCE(SUM(m.monto_total), 0) AS total_recaudado
-            FROM productos p
-            LEFT JOIN movimientos m ON p.id_producto = m.id_producto AND m.tipo_movimiento = 'VENTA'
-            GROUP BY p.id_producto, p.nombre, p.marca, p.presentacion
-            ORDER BY unidades_vendidas DESC
-        """
-        ranking_data = db.ejecutar_query(query_rank, fetch=True)
-        
-        if ranking_data:
-            df_rank = pd.DataFrame(ranking_data, columns=["Producto", "Principio Activo", "Presentación", "Unidades Vendidas", "Total Recaudado (S/.)"])
-            
-            col_r1, col_r2 = st.columns(2)
-            with col_r1:
-                st.markdown("### 🔥 Top 10 Más Vendidos")
-                st.dataframe(df_rank.head(10), use_container_width=True)
 
 # =====================================================================
 # PANTALLA 6: CONFIGURACIÓN
