@@ -525,7 +525,7 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
     color: #0D47A1;
 }}
 
-/* ESTILOS DE NAVEGACIÓN MULTIPESTAÑA CON ENLACES NATIVOS */
+/* ESTILOS DE NAVEGACIÓN MULTIPESTAÑA CON ENLACES NATIVOS - AJUSTE DE COLOR Y CONTRASTE DE TEXTO */
 .nav-link-btn {{
     display: block;
     width: 100%;
@@ -533,7 +533,7 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
     margin-bottom: 6px;
     border-radius: 8px;
     text-decoration: none !important;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 14px;
     text-align: left;
     transition: all 0.2s ease-in-out;
@@ -544,12 +544,13 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
     box-shadow: 0px 2px 6px rgba(0,0,0,0.2);
 }}
 .nav-link-inactive {{
-    background-color: rgba(255, 255, 255, 0.6);
-    color: {tema_actual['sidebar_text']} !important;
-    border: 1px solid rgba(0,0,0,0.1);
+    background-color: transparent !important;
+    color: #000000 !important;
+    border: 1px solid transparent;
 }}
 .nav-link-inactive:hover {{
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: rgba(13, 71, 161, 0.1) !important;
+    color: #0D47A1 !important;
     border-color: #0D47A1;
 }}
 </style>
