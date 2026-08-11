@@ -456,7 +456,7 @@ else:
 
 style_css = f"""
 <style>
-/* 1. SOLUCIÓN AL PULL-TO-REFRESH EN MÓVILES */
+/* 1. PREVENCIÓN DE DESVANECIMIENTO Y SCROLL SUAVE */
 html, body, .stApp, .main, [data-testid="stAppViewContainer"] {{
     overscroll-behavior-y: none !important;
     overscroll-behavior-x: none !important;
@@ -524,7 +524,7 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
     color: #0D47A1;
 }}
 
-/* ESTILOS DE NAVEGACIÓN MULTIPESTAÑA - CAMBIO DE COLOR DE LETRA A BLANCO PARA NO SELECCIONADOS */
+/* ESTILOS DE NAVEGACIÓN MULTIPESTAÑA */
 .nav-link-btn {{
     display: block;
     width: 100%;
@@ -544,7 +544,7 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
 }}
 .nav-link-inactive {{
     background-color: transparent !important;
-    color: #FFFFFF !important; /* TEXTO EN COLOR BLANCO PARA NO SELECCIONADOS */
+    color: #FFFFFF !important;
     border: 1px solid transparent;
 }}
 .nav-link-inactive:hover {{
@@ -553,26 +553,6 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
     border-color: rgba(255, 255, 255, 0.3);
 }}
 </style>
-
-<!-- 2. SOLUCIÓN PARA AUTO-OCULTAR BARRA LATERAL EN MÓVILES AL HACER CLIC -->
-<script>
-document.addEventListener('click', function(e) {{
-    const isMobile = window.innerWidth <= 768;
-    if (isMobile) {{
-        const isSidebarButton = e.target.closest('section[data-testid="stSidebar"] button, section[data-testid="stSidebar"] a');
-        if (isSidebarButton) {{
-            setTimeout(() => {{
-                const closeBtn = parent.document.querySelector('button[data-testid="stSidebarCollapseButton"]') || 
-                                 parent.document.querySelector('section[data-testid="stSidebar"] button[aria-label="Close"]') ||
-                                 document.querySelector('button[data-testid="stSidebarCollapseButton"]');
-                if (closeBtn) {{
-                    closeBtn.click();
-                }}
-            }}, 150);
-        }}
-    }}
-}}, true);
-</script>
 """
 st.markdown(style_css, unsafe_allow_html=True)
 
@@ -621,7 +601,7 @@ if not st.session_state.logged_in:
 todos_productos = cargar_productos_db()
 
 # =====================================================================
-# SISTEMA DE ALERTAS EN VENTANA MODAL (CON SCROLL DE MOUSE CORREGIDO)
+# SISTEMA DE ALERTAS EN VENTANA MODAL
 # =====================================================================
 alertas_sin_stock = []
 alertas_tabletas_bajo = []
@@ -1118,7 +1098,7 @@ if menu_url == "buscar":
                     )
 
 # =====================================================================
-# PANTALLA 2: REGISTRAR NUEVO PRODUCTO (CON AUTORELLENADO DE PLANTILLA)
+# PANTALLA 2: REGISTRAR NUEVO PRODUCTO (CON PLACEHOLDERS Y AUTORELLENADO)
 # =====================================================================
 elif menu_url == "registrar":
     st.header("📝 Registrar Nuevo Producto en el Inventario")
@@ -1135,7 +1115,7 @@ elif menu_url == "registrar":
     labs_query = ejecutar_query("SELECT DISTINCT laboratorio FROM productos WHERE laboratorio IS NOT NULL AND laboratorio != '' ORDER BY laboratorio ASC", fetch=True)
     laboratorios_existentes = [l['laboratorio'] for l in labs_query] if labs_query else []
 
-    # --- NUEVA OPCIÓN: BASE DE DATOS DE PLANTILLAS REGISTRADAS PARA AUTORELLENAR ---
+    # BASE DE DATOS DE PLANTILLAS REGISTRADAS PARA AUTORELLENAR
     dict_plantillas = {f"{p['nombre']} ({p['marca']})": p for p in todos_productos} if todos_productos else {}
     prod_base_sel = st.selectbox(
         "💡 Basarse en un producto ya registrado (Opcional - Autorrellena los datos):",
@@ -1158,11 +1138,25 @@ elif menu_url == "registrar":
             val_lab_defecto = p_base['laboratorio']
     
     st.subheader("Información Básica")
-    nombre_prod = st.text_input("Nombre Comercial del Producto / Marca", value=val_nombre_defecto, placeholder="Escribe el nombre aquí...", key=f"nombre_{k}", disabled=disabled_mode)
+    
+    # MODIFICACIÓN APLICADA: Uso de 'placeholder' para borrado automático al enfocar o escribir
+    nombre_prod = st.text_input(
+        "Nombre Comercial del Producto / Marca", 
+        value=val_nombre_defecto, 
+        placeholder="Escriba o registre un nuevo producto aquí...", 
+        key=f"nombre_{k}", 
+        disabled=disabled_mode
+    )
     
     col_basica1, col_basica2 = st.columns(2)
     with col_basica1:
-        marca_principio = st.text_input("Principio Activo", value=val_marca_defecto, placeholder="Ej: Paracetamol / Piritionato de zinc", key=f"marca_{k}", disabled=disabled_mode)
+        marca_principio = st.text_input(
+            "Principio Activo", 
+            value=val_marca_defecto, 
+            placeholder="Ej: Paracetamol / Piritionato de zinc", 
+            key=f"marca_{k}", 
+            disabled=disabled_mode
+        )
     with col_basica2:
         idx_lab = (["[ Escribir un nuevo laboratorio ]"] + laboratorios_existentes).index(val_lab_defecto) if val_lab_defecto in (["[ Escribir un nuevo laboratorio ]"] + laboratorios_existentes) else 0
         opcion_lab = st.selectbox(
@@ -1174,7 +1168,12 @@ elif menu_url == "registrar":
             disabled=disabled_mode
         )
         if opcion_lab == "[ Escribir un nuevo laboratorio ]":
-            laboratorio = st.text_input("Nombre del Nuevo Laboratorio", placeholder="Ej: Procter & Gamble, Genfar", key=f"lab_{k}", disabled=disabled_mode)
+            laboratorio = st.text_input(
+                "Nombre del Nuevo Laboratorio", 
+                placeholder="Escriba el nombre del nuevo laboratorio aquí...", 
+                key=f"lab_{k}", 
+                disabled=disabled_mode
+            )
         else:
             laboratorio = opcion_lab
         
