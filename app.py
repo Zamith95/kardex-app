@@ -6,7 +6,7 @@ import pandas as pd
 import openpyxl
 import urllib.parse
 
-# --- PASO 3: IMPORTACIÓN DE MÓDULO BASE DE DATOS CACHEADO ---
+# --- IMPORTACIÓN DE MÓDULO BASE DE DATOS CACHEADO ---
 import database as db
 
 # Mantenemos try/except para pytz para prevenir caídas de entorno
@@ -15,7 +15,7 @@ try:
 except ImportError:
     pytz = None
 
-# --- DEBE SER LA PRIMERA LÍNEA DE STREAMLIT EN TU CÓDIGO ---
+# --- CONFIGURACIÓN DE PÁGINA STREAMLIT ---
 st.set_page_config(
     page_title="HOME MEDIC",
     page_icon="logo.png",
@@ -231,7 +231,6 @@ def obtener_fecha_hoy():
 fecha_hoy_local = obtener_fecha_hoy()
 fecha_hoy_str = fecha_hoy_local.strftime('%Y-%m-%d')
 
-# PERSISTENCIA VIA COOKIES / PARÁMETROS NAVEGADOR AL REFRESCAR
 cookie_params = st.query_params
 
 if "pantalla" in cookie_params:
@@ -267,7 +266,6 @@ if "usuario_nombre" not in st.session_state:
 if "pantalla_activa" not in st.session_state:
     st.session_state.pantalla_activa = "buscar"
 
-# --- PASO 3: REEMPLAZO DE CÁRGA DE CONFIGURACIÓN INICIAL POR FUNCIÓN CACHEADA ---
 config = db.cargar_configuracion_db()
 
 if config:
@@ -500,7 +498,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # =====================================================================
-# PASO 4: MOVER CONSULTAS Y ALERTAS A SUS RESPECTIVAS FUNCIONES
+# ALERTAS DE STOCK BAJO O AGOTADO
 # =====================================================================
 @st.dialog("🚨 NOTIFICACIONES DE STOCK CRÍTICO")
 def mostrar_modal_alertas():
@@ -606,29 +604,29 @@ def modal_agregar_producto_compra(lista_productos):
                     st.rerun()
 
 # =====================================================================
-# MODAL INTERACTIVO PARA EDITAR / ELIMINAR VENTAS POR FECHA
+# MODAL INTERACTIVO PARA EDITAR / ELIMINAR REGISTROS
 # =====================================================================
-@st.dialog("Corregir venta", width="small")
+@st.dialog("Corregir o Modificar Registros", width="small")
 def modal_editar_ventas():
-    st.write("Selecciona la fecha exacta en el calendario para consultar y corregir los productos vendidos:")
+    st.write("Selecciona la fecha exacta en el calendario para consultar y corregir los movimientos registrados:")
     
     fecha_editar = st.date_input("📅 Fecha:", value=obtener_fecha_hoy(), format="DD/MM/YYYY", key="input_fecha_modal_editar")
     
     query_v_fecha = """
         SELECT m.id_movimiento, m.id_producto, p.nombre, p.marca, p.presentacion, 
-               m.unidades, m.blisters, p.unidades_por_blister, m.monto_total
+               m.unidades, m.blisters, p.unidades_por_blister, m.monto_total, m.tipo_movimiento
         FROM movimientos m
         JOIN productos p ON m.id_producto = p.id_producto
-        WHERE m.fecha = %s AND m.tipo_movimiento = 'VENTA'
+        WHERE m.fecha = %s
         ORDER BY p.nombre ASC, p.marca ASC, m.id_movimiento DESC
     """
     ventas_del_dia = db.ejecutar_query(query_v_fecha, (fecha_editar,), fetch=True)
     
     st.markdown("---")
-    st.markdown(f"### 📋 Productos Vendidos el `{fecha_editar.strftime('%d/%m/%Y')}`")
+    st.markdown(f"### 📋 Movimientos del `{fecha_editar.strftime('%d/%m/%Y')}`")
     
     if not ventas_del_dia:
-        st.info("ℹ️ No se registraron ventas en la fecha seleccionada.")
+        st.info("ℹ️ No se registraron movimientos en la fecha seleccionada.")
     else:
         for item_v in ventas_del_dia:
             id_mov = item_v[0]
@@ -640,6 +638,7 @@ def modal_editar_ventas():
             blis_cant = item_v[6]
             u_por_blis = item_v[7] or 1
             monto_v = float(item_v[8])
+            tipo_m = str(item_v[9])
             
             tot_unid_mov = u_sueltas + (blis_cant * u_por_blis)
             
@@ -650,7 +649,7 @@ def modal_editar_ventas():
             col_m_info, col_m_cant, col_m_monto, col_m_del = st.columns([4, 2, 2, 2])
             
             with col_m_info:
-                st.markdown(f"**{nom_prod}**  \n<small style='color:gray;'>{marca_prod} - [{pres_prod}]</small>", unsafe_allow_html=True)
+                st.markdown(f"**{nom_prod}**  \n<small style='color:gray;'>{marca_prod} - [{pres_prod}] ({tipo_m})</small>", unsafe_allow_html=True)
             with col_m_cant:
                 st.markdown(f"📦 **{cant_str}**  \n<small style='color:gray;'>({tot_unid_mov} u. total)</small>", unsafe_allow_html=True)
             with col_m_monto:
@@ -658,9 +657,12 @@ def modal_editar_ventas():
             with col_m_del:
                 if st.button("🗑️ Eliminar", key=f"btn_del_mov_{id_mov}", type="secondary", use_container_width=True):
                     db.ejecutar_query("DELETE FROM movimientos WHERE id_movimiento = %s", (id_mov,), commit=True)
-                    db.ejecutar_query("UPDATE productos SET stock_actual_unidades = stock_actual_unidades + %s WHERE id_producto = %s", (tot_unid_mov, id_prod), commit=True)
+                    if tipo_m in ["VENTA", "CONSUMO"]:
+                        db.ejecutar_query("UPDATE productos SET stock_actual_unidades = stock_actual_unidades + %s WHERE id_producto = %s", (tot_unid_mov, id_prod), commit=True)
+                    elif "INGRESO" in tipo_m:
+                        db.ejecutar_query("UPDATE productos SET stock_actual_unidades = stock_actual_unidades - %s WHERE id_producto = %s", (tot_unid_mov, id_prod), commit=True)
                     st.cache_data.clear()
-                    st.toast(f"🗑️ Se eliminó la venta de {nom_prod} y se reintegraron {tot_unid_mov} u. al stock.", icon="✅")
+                    st.toast(f"🗑️ Se eliminó el movimiento de {nom_prod} y se reajustó el stock.", icon="✅")
                     st.rerun()
             st.markdown("<hr style='margin: 5px 0; border-color: #eee;'>", unsafe_allow_html=True)
 
@@ -1609,12 +1611,7 @@ elif menu_url == "compra":
 # PANTALLA 5: REPORTES Y CONTABILIDAD
 # =====================================================================
 elif menu_url == "reportes":
-    col_hdr_rep, col_btn_hdr_edit = st.columns([0.92, 0.08])
-    with col_hdr_rep:
-        st.header("📊 Centro de Reportes y Analítica")
-    with col_btn_hdr_edit:
-        if st.button("✏️", type="primary", key="btn_global_editar_ventas_reportes", help="Corregir o eliminar ventas por fecha"):
-            modal_editar_ventas()
+    st.header("📊 Centro de Reportes y Analítica")
     
     tipo_reporte_sel = st.selectbox(
         "Selecciona el tipo de reporte a visualizar:",
@@ -1628,10 +1625,15 @@ elif menu_url == "reportes":
     st.markdown("---")
 
     # -----------------------------------------------------------------
-    # MÓDULO: REPORTE PERSONALIZADO POR PRODUCTO (KÁRDEX)
+    # MÓDULO 1: REPORTE PERSONALIZADO POR PRODUCTO (KÁRDEX)
     # -----------------------------------------------------------------
     if tipo_reporte_sel == "🔍 Reporte por Producto":
-        st.subheader("🔍 Reporte Detallado y Kárdex por Producto")
+        col_tit_rp, col_btn_edit_rp = st.columns([0.92, 0.08])
+        with col_tit_rp:
+            st.subheader("🔍 Reporte Detallado y Kárdex por Producto")
+        with col_btn_edit_rp:
+            if st.button("✏️", key="btn_edit_rep_prod", type="primary", help="Modificar movimientos"):
+                modal_editar_ventas()
         
         todos_prods = db.cargar_productos_db()
         
@@ -1639,13 +1641,13 @@ elif menu_url == "reportes":
             st.info("No hay productos registrados en la base de datos.")
         else:
             dict_prods_rep = {f"{p['nombre']} ({p['marca']}) - [{p['presentacion']}]": p for p in todos_prods}
-            opciones_rep_prod = [""] + list(dict_prods_rep.keys())
             
             col_p1, col_p2 = st.columns([3, 2])
             with col_p1:
+                # LISTA LIMPIA CON PRIMERA OPCIÓN EN BLANCO PARA CLIC DIRECTO
                 prod_sel_rep = st.selectbox(
                     "📦 Selecciona el Producto:",
-                    opciones_rep_prod,
+                    [""] + list(dict_prods_rep.keys()),
                     index=0,
                     placeholder="Haz clic y comienza a escribir...",
                     key="sel_prod_reporte_ind"
@@ -1683,7 +1685,6 @@ elif menu_url == "reportes":
                 p_objeto = dict_prods_rep[prod_sel_rep]
                 id_p_sel = p_objeto['id_producto']
                 
-                # Consulta adaptada de movimientos compatibles con PostgreSQL / Neon
                 query_movs_p = """
                     SELECT m.id_movimiento, m.fecha, m.tipo_movimiento, m.unidades, m.blisters, m.cajas, 
                            m.monto_total, m.costo_total_capital, m.ingreso_neto,
@@ -1695,7 +1696,6 @@ elif menu_url == "reportes":
                 """
                 movs_p_data = db.ejecutar_query(query_movs_p, (id_p_sel, fecha_inicio_p, fecha_fin_p), fetch=True)
                 
-                # Ficha del producto encabezado
                 st.markdown(f"### 📋 Ficha Actual: `{p_objeto['nombre']}`")
                 col_k1, col_k2, col_k3, col_k4 = st.columns(4)
                 with col_k1:
@@ -1753,7 +1753,7 @@ elif menu_url == "reportes":
                             entradas_u = 0
                             salidas_u = tot_u_mov
                             monto_str = "S/. 0.00 (Consumo)"
-                        else: # INGRESO / COMPRA
+                        else:
                             entradas_u = tot_u_mov
                             salidas_u = 0
                             total_unidades_ingresadas += tot_u_mov
@@ -1769,7 +1769,6 @@ elif menu_url == "reportes":
                             "Ganancia Neta (S/.)": f"S/. {ing_neto:.2f}" if tipo_m == "VENTA" else "-"
                         })
 
-                    # Métricas destacadas
                     col_m_p1, col_m_p2, col_m_p3, col_m_p4, col_m_p5 = st.columns(5)
                     with col_m_p1:
                         st.metric("📦 Entradas Totales", f"{total_unidades_ingresadas} u.")
@@ -1788,7 +1787,6 @@ elif menu_url == "reportes":
                     df_kardex = pd.DataFrame(filas_kardex)
                     st.dataframe(df_kardex, use_container_width=True)
 
-                    # Exportación
                     df_kardex_excel = df_kardex.copy()
                     df_kardex_excel.insert(0, "N° Item", range(1, len(df_kardex_excel) + 1))
                     
@@ -1834,10 +1832,18 @@ elif menu_url == "reportes":
                                 use_container_width=True
                             )
             else:
-                st.info("👆 Selecciona un producto del menú desplegable para consultar su Kárdex y reporte.")
+                st.info("👆 Selecciona o busca un producto en la lista desplegable superior para cargar su reporte.")
 
+    # -----------------------------------------------------------------
+    # MÓDULO 2: REPORTE DE VENTAS
+    # -----------------------------------------------------------------
     elif tipo_reporte_sel == "💵 Reporte de Ventas":
-        st.subheader("💵 Reporte Exclusivo de Ventas y Ganancias")
+        col_tit_v, col_btn_edit_v = st.columns([0.92, 0.08])
+        with col_tit_v:
+            st.subheader("💵 Reporte Exclusivo de Ventas y Ganancias")
+        with col_btn_edit_v:
+            if st.button("✏️", key="btn_edit_rep_ventas", type="primary", help="Modificar ventas"):
+                modal_editar_ventas()
         
         filtro_tiempo = st.selectbox("Selecciona Periodo:", ["Hoy", "Esta Semana", "Este Mes", "Rango Personalizado"], key="f_ventas_exc")
         fecha_inicio = obtener_fecha_hoy()
@@ -1936,8 +1942,16 @@ elif menu_url == "reportes":
                         use_container_width=True
                     )
 
+    # -----------------------------------------------------------------
+    # MÓDULO 3: REPORTE DE COMPRAS
+    # -----------------------------------------------------------------
     elif tipo_reporte_sel == "🛒 Reporte de Compras":
-        st.subheader("🛒 Reporte Detallado de Compras e Inversión")
+        col_tit_c, col_btn_edit_c = st.columns([0.92, 0.08])
+        with col_tit_c:
+            st.subheader("🛒 Reporte Detallado de Compras e Inversión")
+        with col_btn_edit_c:
+            if st.button("✏️", key="btn_edit_rep_compras", type="primary", help="Modificar compras"):
+                modal_editar_ventas()
         
         col_c_p1, col_c_p2 = st.columns(2)
         with col_c_p1:
@@ -2003,7 +2017,7 @@ elif menu_url == "reportes":
             excel_c_bytes = output_c.getvalue()
             pdf_c_bytes = generar_pdf_bonito(
                 df_comp_excel,
-                titulo_reporte="Reporte de Compras e Inversión",
+                titulo_reporte="Reporte Detallado de Compras",
                 subti_reporte=f"Establecimiento: {st.session_state.nombre_negocio} | Periodo: {f_inicio_c.strftime('%d/%m/%Y')} al {f_fin_c.strftime('%d/%m/%Y')}",
                 es_inventario=False
             )
@@ -2028,110 +2042,117 @@ elif menu_url == "reportes":
                     )
 
 # =====================================================================
-# PANTALLA 6: CONFIGURACIÓN
+# PANTALLA 6: CONFIGURACIÓN GENERAL DEL SISTEMA
 # =====================================================================
 elif menu_url == "config":
-    st.header("⚙️ Configuración del Sistema")
-
+    st.header("⚙️ Configuración del Negocio y Apariencia")
+    
     if st.session_state.usuario_rol != "admin":
-        st.warning("🔒 Acceso Restringido: Solo administradores pueden realizar cambios en la configuración global.")
-    else:
-        st.subheader("🎨 Apariencia y Personalización")
+        st.warning("🔒 Solo los administradores pueden cambiar la configuración de la marca o apariencia.")
+    
+    disabled_mode = (st.session_state.usuario_rol != "admin")
 
-        nuevo_nombre = st.text_input("Nombre de la Botica / Farmacia:", value=st.session_state.nombre_negocio)
+    st.subheader("1. Identidad de la Marca")
+    nuevo_nombre = st.text_input("Nombre del Establecimiento / Negocio", value=st.session_state.nombre_negocio, disabled=disabled_mode)
+    
+    st.subheader("2. Estilo y Colores")
+    opciones_temas = list(config_temas.keys())
+    idx_tema_act = opciones_temas.index(st.session_state.tema_color) if st.session_state.tema_color in opciones_temas else 0
+    nuevo_tema = st.selectbox("Tema Visual de Interfaz", opciones_temas, index=idx_tema_act, disabled=disabled_mode)
 
-        temas_opciones = ["Celeste Pastel", "Gris Elegante", "Azul Profesional", "Blanco Puro", "Oscuro Clásico"]
-        idx_t = temas_opciones.index(st.session_state.tema_color) if st.session_state.tema_color in temas_opciones else 0
-        nuevo_tema = st.selectbox("Tema de Color de Interfaz:", temas_opciones, index=idx_t)
+    st.subheader("3. Imágenes y Personalización")
+    col_img1, col_img2 = st.columns(2)
+    
+    with col_img1:
+        st.markdown("**Logo del Negocio**")
+        if st.session_state.logo_bytes:
+            st.image(base64.b64decode(st.session_state.logo_bytes), width=120)
+        uploaded_logo = st.file_uploader("Subir nuevo logo (PNG/JPG)", type=["png", "jpg", "jpeg"], key="upload_logo", disabled=disabled_mode)
 
-        st.markdown("---")
-        st.subheader("🖼️ Logotipo y Fondo")
+    with col_img2:
+        st.markdown("**Imagen de Fondo**")
+        if st.session_state.fondo_bytes:
+            st.caption("Fondo de pantalla activo actualmente.")
+        uploaded_fondo = st.file_uploader("Subir imagen de fondo", type=["png", "jpg", "jpeg"], key="upload_fondo", disabled=disabled_mode)
 
-        col_img1, col_img2 = st.columns(2)
-
-        with col_img1:
-            st.markdown("**Logo de la empresa**")
-            up_logo = st.file_uploader("Subir nuevo Logo (PNG/JPG):", type=["png", "jpg", "jpeg"], key="up_logo_cfg")
-            if up_logo:
-                st.session_state.logo_bytes = base64.b64encode(up_logo.read()).decode()
-                st.image(base64.b64decode(st.session_state.logo_bytes), width=120)
-
-        with col_img2:
-            st.markdown("**Imagen de Fondo (Opcional)**")
-            up_fondo = st.file_uploader("Subir nueva Imagen de Fondo:", type=["png", "jpg", "jpeg"], key="up_fondo_cfg")
-            if up_fondo:
-                st.session_state.fondo_bytes = base64.b64encode(up_fondo.read()).decode()
-
-        if st.button("💾 Guardar Configuración", type="primary"):
-            st.session_state.nombre_negocio = nuevo_nombre
-            st.session_state.tema_color = nuevo_tema
-
-            query_up_cfg = """
-                UPDATE configuracion 
-                SET nombre_negocio = %s, tema_color = %s, logo_bytes = %s, fondo_bytes = %s 
-                WHERE id = 1
-            """
-            db.ejecutar_query(query_up_cfg, (nuevo_nombre, nuevo_tema, st.session_state.logo_bytes, st.session_state.fondo_bytes), commit=True)
-            st.cache_data.clear()
-            st.success("🎉 ¡Configuración actualizada correctamente!")
-            st.rerun()
+    st.markdown("---")
+    if st.button("💾 Guardar Configuración", type="primary", disabled=disabled_mode):
+        nuevo_logo_b64 = st.session_state.logo_bytes
+        nuevo_fondo_b64 = st.session_state.fondo_bytes
+        
+        if uploaded_logo is not None:
+            nuevo_logo_b64 = base64.b64encode(uploaded_logo.read()).decode('utf-8')
+        if uploaded_fondo is not None:
+            nuevo_fondo_b64 = base64.b64encode(uploaded_fondo.read()).decode('utf-8')
+            
+        db.ejecutar_query(
+            "UPDATE configuracion SET nombre_negocio=%s, tema_color=%s, logo_bytes=%s, fondo_bytes=%s WHERE id=1",
+            (nuevo_nombre, nuevo_tema, nuevo_logo_b64, nuevo_fondo_b64),
+            commit=True
+        )
+        
+        st.session_state.nombre_negocio = nuevo_nombre
+        st.session_state.tema_color = nuevo_tema
+        st.session_state.logo_bytes = nuevo_logo_b64
+        st.session_state.fondo_bytes = nuevo_fondo_b64
+        
+        st.cache_data.clear()
+        st.toast("✅ Configuración guardada correctamente", icon="💾")
+        st.rerun()
 
 # =====================================================================
 # PANTALLA 7: GESTIÓN DE USUARIOS
 # =====================================================================
 elif menu_url == "usuarios":
     st.header("👥 Gestión de Usuarios y Permisos")
-
+    
     if st.session_state.usuario_rol != "admin":
-        st.error("🔒 Acceso Denegado: Esta pantalla es exclusiva para el administrador.")
-    else:
-        st.subheader("➕ Crear Nuevo Usuario")
-
-        with st.form("form_nuevo_usr", clear_on_submit=True):
-            col_u1, col_u2, col_u3 = st.columns(3)
-            with col_u1:
-                n_usr = st.text_input("Nombre de Usuario:")
-            with col_u2:
-                n_pwd = st.text_input("Contraseña:", type="password")
-            with col_u3:
-                n_rol = st.selectbox("Rol de Acceso:", ["vendedor", "admin"])
-
-            btn_crear_u = st.form_submit_button("💾 Crear Usuario")
-
-            if btn_crear_u:
-                if not n_usr or not n_pwd:
-                    st.error("⚠️ Debes completar todos los campos.")
-                else:
-                    db.ejecutar_query(
-                        "INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)",
-                        (n_usr.strip(), n_pwd.strip(), n_rol),
-                        commit=True
-                    )
-                    st.success(f"🎉 ¡Usuario '{n_usr}' creado correctamente con el rol de {n_rol}!")
-                    st.rerun()
-
-        st.markdown("---")
-        st.subheader("📋 Usuarios Registrados")
-
-        usr_list = db.ejecutar_query("SELECT id_usuario, usuario, rol FROM usuarios ORDER BY id_usuario ASC", fetch=True)
+        st.error("🔒 Acceso Denegado: Esta pantalla es exclusiva para el Administrador principal.")
+        st.stop()
         
-        if usr_list:
-            df_u = pd.DataFrame(usr_list, columns=["ID", "Usuario", "Rol"])
-            st.dataframe(df_u, use_container_width=True)
+    st.subheader("➕ Crear Nuevo Usuario")
+    with st.form("form_crear_usuario", clear_on_submit=True):
+        col_u1, col_u2, col_u3 = st.columns(3)
+        with col_u1:
+            nuevo_usr = st.text_input("Nombre de Usuario")
+        with col_u2:
+            nuevo_pwd = st.text_input("Contraseña", type="password")
+        with col_u3:
+            nuevo_rol = st.selectbox("Rol / Nivel de Acceso", ["vendedor", "admin"])
             
-            st.markdown("---")
-            st.subheader("🗑️ Eliminar Usuario")
-            
-            usr_dict = {f"{u[1]} ({u[2]})": u[0] for u in usr_list if u[1] != st.session_state.usuario_nombre}
-            if usr_dict:
-                usr_del_sel = st.selectbox("Selecciona usuario a eliminar:", [""] + list(usr_dict.keys()))
-                if usr_del_sel != "":
-                    id_del = usr_dict[usr_del_sel]
-                    if st.button("❌ Confirmar Eliminación", type="primary"):
-                        db.ejecutar_query("DELETE FROM usuarios WHERE id_usuario = %s", (id_del,), commit=True)
-                        st.success("¡Usuario eliminado correctamente!")
-                        st.rerun()
+        btn_crear_u = st.form_submit_button("💾 Guardar Usuario", type="primary")
+        
+        if btn_crear_u:
+            if not nuevo_usr.strip() or not nuevo_pwd.strip():
+                st.error("⚠️ Usuario y Contraseña son obligatorios.")
             else:
-                st.info("No hay otros usuarios registrados para eliminar.")
-        else:
-            st.info("No se encontraron usuarios en la base de datos.")
+                db.ejecutar_query(
+                    "INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)",
+                    (nuevo_usr.strip(), nuevo_pwd.strip(), nuevo_rol),
+                    commit=True
+                )
+                st.cache_data.clear()
+                st.toast(f"✅ Usuario '{nuevo_usr}' creado con éxito", icon="👤")
+                st.rerun()
+                
+    st.markdown("---")
+    st.subheader("📋 Usuarios Registrados en el Sistema")
+    
+    list_users = db.ejecutar_query("SELECT id_usuario, usuario, rol FROM usuarios ORDER BY id_usuario ASC", fetch=True)
+    
+    if list_users:
+        for u in list_users:
+            u_id, u_nombre, u_rol = u[0], u[1], u[2]
+            col_u_info, col_u_acc = st.columns([4, 1])
+            with col_u_info:
+                st.markdown(f"👤 **{u_nombre}** — *Rol:* `{u_rol}`")
+            with col_u_acc:
+                if u_nombre.lower() != "admin":
+                    if st.button("🗑️ Eliminar", key=f"del_user_{u_id}", type="secondary", use_container_width=True):
+                        db.ejecutar_query("DELETE FROM usuarios WHERE id_usuario = %s", (u_id,), commit=True)
+                        st.cache_data.clear()
+                        st.toast(f"🗑️ Usuario {u_nombre} eliminado.", icon="✅")
+                        st.rerun()
+                else:
+                    st.caption("*(Protegido)*")
+            st.markdown("<hr style='margin: 3px 0; border-color: #eee;'>", unsafe_allow_html=True)
