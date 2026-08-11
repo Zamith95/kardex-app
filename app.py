@@ -663,7 +663,7 @@ def modal_editar_ventas():
                     db.ejecutar_query("UPDATE productos SET stock_actual_unidades = stock_actual_unidades + %s WHERE id_producto = %s", (tot_unid_mov, id_prod), commit=True)
                     db.cargar_productos_db.clear()
                     st.toast(f"🗑️ Se eliminó la venta de {nom_prod} y se reintegraron {tot_unid_mov} u. al stock.", icon="✅")
-                    # 2. NO HACEMOS RERUN PARA PERMITIR QUE EL MODAL PERMANEZCA ABIERTO Y CONTINUAR ELIMINANDO
+                    st.rerun()
             st.markdown("<hr style='margin: 5px 0; border-color: #eee;'>", unsafe_allow_html=True)
 
 # =====================================================================
