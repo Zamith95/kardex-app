@@ -1,42 +1,57 @@
 import streamlit as st
 from sqlalchemy import text
 
-# Usamos la conexión gestionada de Streamlit para PostgreSQL (Neon)
+# Conexión gestionada de Streamlit para PostgreSQL (Neon)
 def get_connection():
     return st.connection("postgresql", type="sql")
 
-# 1. Caché de la configuración inicial del negocio (Expira en 1 hora o al reiniciar)
+# 1. Caché de la configuración inicial del negocio (Expira en 1 hora)
 @st.cache_data(ttl=3600)
 def cargar_configuracion_db():
     conn = get_connection()
-    df = conn.query("SELECT nombre_negocio, tema_color, logo_bytes, fondo_bytes FROM configuracion WHERE id = 1;", ttl=0)
-    if not df.empty:
-        row = df.iloc[0]
-        return {
-            "nombre_negocio": row["nombre_negocio"],
-            "tema_color": row["tema_color"],
-            "logo_bytes": row["logo_bytes"],
-            "fondo_bytes": row["fondo_bytes"]
-        }
+    try:
+        df = conn.query("SELECT nombre_negocio, tema_color, logo_bytes, fondo_bytes FROM configuracion WHERE id = 1;", ttl=0)
+        if not df.empty:
+            row = df.iloc[0]
+            return {
+                "nombre_negocio": row["nombre_negocio"],
+                "tema_color": row["tema_color"],
+                "logo_bytes": row["logo_bytes"],
+                "fondo_bytes": row["fondo_bytes"]
+            }
+    except Exception as e:
+        st.error(f"Error al cargar configuración: {e}")
     return None
 
-# 2. Función genérica para ejecutar escrituras (INSERT, UPDATE, DELETE)
+# 2. Función faltante requerida por app.py (Resuelve AttributeError)
+@st.cache_data(ttl=60)
+def cargar_productos_db():
+    conn = get_connection()
+    try:
+        # Ajusta las columnas si tu tabla 'productos' tiene nombres diferentes
+        df = conn.query("SELECT * FROM productos;", ttl=0)
+        return df
+    except Exception as e:
+        st.error(f"Error al cargar productos: {e}")
+        return None
+
+# 3. Función genérica para escrituras (INSERT, UPDATE, DELETE)
 def ejecutar_escritura(query, params=None):
     conn = get_connection()
     with conn.session as session:
         session.execute(text(query) if isinstance(query, str) else query, params or {})
         session.commit()
 
-# 3. Función genérica para consultas rápidas sin caché
+# 4. Función genérica para consultas rápidas sin caché
 def ejecutar_consulta(query, params=None):
     conn = get_connection()
-    return conn.query(query, params=params)
+    return conn.query(query, params=params, ttl=0)
 
-# 4. Función compatible para consultas genéricas (Acepta tuplas o diccionarios en params)
+# 5. Función compatible para consultas genéricas (Maneja %s, tuplas y diccionarios)
 def ejecutar_query(query, params=None, fetch=False):
     conn = get_connection()
     
-    # Reemplaza los placeholders estilo %s por parámetros posicionales compatibles
+    # Reemplaza los placeholders estilo %s por parámetros con nombre
     if isinstance(params, (tuple, list)):
         formatted_params = {}
         for idx, val in enumerate(params):
@@ -46,13 +61,19 @@ def ejecutar_query(query, params=None, fetch=False):
         params = formatted_params
 
     if fetch:
-        # Devuelve una lista de tuplas/filas si se solicita fetch=True
-        df = conn.query(query, params=params, ttl=0)
-        if df.empty:
-            return []
-        return [tuple(x) for x in df.to_numpy()]
+        try:
+            df = conn.query(query, params=params, ttl=0)
+            if df.empty:
+                return []
+            return [tuple(x) for x in df.to_numpy()]
+        except Exception:
+            # En caso de desconexión SSL/Neon, intenta resetear la conexión una vez
+            st.cache_data.clear()
+            df = conn.query(query, params=params, ttl=0)
+            if df.empty:
+                return []
+            return [tuple(x) for x in df.to_numpy()]
     else:
-        # Para operaciones de escritura
         with conn.session as session:
             session.execute(text(query), params or {})
             session.commit()
