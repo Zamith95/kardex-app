@@ -504,7 +504,6 @@ if not st.session_state.logged_in:
 # =====================================================================
 @st.dialog("🚨 NOTIFICACIONES DE STOCK CRÍTICO")
 def mostrar_modal_alertas():
-    # Se consulta la lista de productos únicamente al abrir las alertas
     prods = db.cargar_productos_db()
     alertas_sin_stock = []
     alertas_tabletas_bajo = []
@@ -577,7 +576,7 @@ def modal_agregar_producto_compra(lista_productos):
         
         if tot_unidades_compra > 0 and costo_total_item > 0:
             costo_u_calc = costo_total_item / tot_unidades_compra
-            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculated:** S/. {costo_u_calc:.4f} por unidad.")
+            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculado:** S/. {costo_u_calc:.4f} por unidad.")
             
         st.markdown("---")
         col_m_btn1, col_m_btn2 = st.columns([1, 1])
@@ -615,7 +614,6 @@ def modal_editar_ventas():
     
     fecha_editar = st.date_input("📅 Fecha:", value=obtener_fecha_hoy(), format="DD/MM/YYYY", key="input_fecha_modal_editar")
     
-    # 1. ORDENAMOS POR NOMBRE Y MARCA DEL PRODUCTO PARA MOSTRAR DUPLICADOS JUNTOS
     query_v_fecha = """
         SELECT m.id_movimiento, m.id_producto, p.nombre, p.marca, p.presentacion, 
                m.unidades, m.blisters, p.unidades_por_blister, m.monto_total
@@ -735,7 +733,6 @@ st.title(f"💊 Kardex - {st.session_state.nombre_negocio}")
 if menu_url == "buscar":
     st.header("🔍 Buscador de Medicamentos")
     
-    # --- PASO 4: Carga de productos diferida únicamente cuando se usa la pestaña ---
     todos_productos = db.cargar_productos_db()
     
     if not todos_productos:
