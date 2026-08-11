@@ -2102,95 +2102,98 @@ elif menu_url == "config":
     if st.session_state.usuario_rol != "admin":
         st.warning("🔒 Solo los usuarios Administradores pueden cambiar la configuración de la empresa y la interfaz.")
     else:
-        st.subheader("🎨 Personalización de la Aplicación")
+        st.subheader("Personalización de Marca e Interfaz")
         
-        with st.form("form_config_app"):
-            nuevo_nombre = st.text_input("Nombre de la Farmacia / Empresa", value=st.session_state.nombre_negocio)
+        with st.form("form_configuracion_sistema", clear_on_submit=False):
+            nuevo_nombre_negocio = st.text_input("Nombre de la Botica / Farmacia", value=st.session_state.nombre_negocio)
             
-            temas = ["Celeste Pastel", "Gris Elegante", "Azul Profesional", "Blanco Puro", "Oscuro Clásico"]
-            idx_tema = temas.index(st.session_state.tema_color) if st.session_state.tema_color in temas else 0
-            nuevo_tema = st.selectbox("Tema de Colores", temas, index=idx_tema)
+            opciones_temas = list(config_temas.keys())
+            idx_tema = opciones_temas.index(st.session_state.tema_color) if st.session_state.tema_color in opciones_temas else 0
+            nuevo_tema_color = st.selectbox("Tema Visual / Paleta de Colores", opciones_temas, index=idx_tema)
             
-            logo_file = st.file_uploader("Cargar Logo (PNG o JPG)", type=["png", "jpg", "jpeg"])
-            fondo_file = st.file_uploader("Cargar Imagen de Fondo (PNG o JPG)", type=["png", "jpg", "jpeg"])
-            
-            guardar_conf = st.form_submit_button("💾 Guardar Configuración", type="primary")
-            
-            if guardar_conf:
-                st.session_state.nombre_negocio = nuevo_nombre
-                st.session_state.tema_color = nuevo_tema
-                
-                logo_b64 = st.session_state.logo_bytes
-                if logo_file is not None:
-                    logo_b64 = base64.b64encode(logo_file.read()).decode('utf-8')
-                    st.session_state.logo_bytes = logo_b64
-                    
-                fondo_b64 = st.session_state.fondo_bytes
-                if fondo_file is not None:
-                    fondo_b64 = base64.b64encode(fondo_file.read()).decode('utf-8')
-                    st.session_state.fondo_bytes = fondo_b64
-                    
+            st.markdown("---")
+            col_up1, col_up2 = st.columns(2)
+            with col_up1:
+                nuevo_logo = st.file_uploader("Subir nuevo Logo (PNG/JPG)", type=["png", "jpg", "jpeg"])
+            with col_up2:
+                nuevo_fondo = st.file_uploader("Subir Imagen de Fondo de Pantalla (Opcional)", type=["png", "jpg", "jpeg"])
+
+            guardar_config = st.form_submit_button("💾 Guardar Cambios de Configuración", type="primary")
+
+            if guardar_config:
+                logo_base64 = st.session_state.logo_bytes
+                fondo_base64 = st.session_state.fondo_bytes
+
+                if nuevo_logo:
+                    logo_base64 = base64.b64encode(nuevo_logo.read()).decode("utf-8")
+
+                if nuevo_fondo:
+                    fondo_base64 = base64.b64encode(nuevo_fondo.read()).decode("utf-8")
+
+                db.ejecutar_query("DELETE FROM configuracion", commit=True)
                 db.ejecutar_query(
-                    "UPDATE configuracion SET nombre_negocio=%s, tema_color=%s, logo_bytes=%s, fondo_bytes=%s WHERE id=1",
-                    (nuevo_nombre, nuevo_tema, logo_b64, fondo_b64),
+                    "INSERT INTO configuracion (nombre_negocio, tema_color, logo_bytes, fondo_bytes) VALUES (%s, %s, %s, %s)",
+                    (nuevo_nombre_negocio, nuevo_tema_color, logo_base64, fondo_base64),
                     commit=True
                 )
-                db.cargar_configuracion_db.clear()
-                
+
+                st.session_state.nombre_negocio = nuevo_nombre_negocio
+                st.session_state.tema_color = nuevo_tema_color
+                st.session_state.logo_bytes = logo_base64
+                st.session_state.fondo_bytes = fondo_base64
+
+                st.cache_data.clear()
                 st.toast("⚙️ ¡Configuración guardada exitosamente!", icon="✅")
                 st.rerun()
 
 # =====================================================================
-# PANTALLA 7: GESTIÓN DE USUARIOS
+# PANTALLA 7: GESTIONAR USUARIOS (ADMIN)
 # =====================================================================
-elif menu_url == "usuarios" and st.session_state.usuario_rol == "admin":
-    st.header("👥 Gestión de Usuarios y Permisos")
+elif menu_url == "usuarios" and st.session_state.get("usuario_rol") == "admin":
+    st.header("👥 Gestión de Usuarios y Accesos")
     
-    st.subheader("➕ Registrar Nuevo Usuario")
+    st.subheader("➕ Crear Nuevo Usuario")
     with st.form("form_crear_usuario", clear_on_submit=True):
         col_u1, col_u2, col_u3 = st.columns(3)
         with col_u1:
-            u_nombre = st.text_input("Nombre de Usuario")
+            nuevo_usr = st.text_input("Usuario (Login)")
         with col_u2:
-            u_pass = st.text_input("Contraseña", type="password")
+            nuevo_pwd = st.text_input("Contraseña", type="password")
         with col_u3:
-            u_rol = st.selectbox("Rol del Usuario", ["vendedor", "admin"])
+            nuevo_rol = st.selectbox("Rol de Acceso", ["vendedor", "admin"])
             
-        btn_crear_u = st.form_submit_button("💾 Crear Usuario", type="primary")
+        btn_crear_u = st.form_submit_button("💾 Registrar Usuario", type="primary")
+        
         if btn_crear_u:
-            if u_nombre and u_pass:
-                res_exist = db.ejecutar_query("SELECT id FROM usuarios WHERE usuario = %s", (u_nombre.strip(),), fetch=True)
+            if not nuevo_usr.strip() or not nuevo_pwd.strip():
+                st.error("⚠️ El usuario y la contraseña no pueden estar vacíos.")
+            else:
+                res_exist = db.ejecutar_query("SELECT usuario FROM usuarios WHERE usuario = %s", (nuevo_usr.strip(),), fetch=True)
                 if res_exist:
-                    st.error("⚠️ El nombre de usuario ya existe. Elige otro.")
+                    st.error("⚠️ El nombre de usuario ya se encuentra registrado.")
                 else:
                     db.ejecutar_query(
                         "INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)",
-                        (u_nombre.strip(), u_pass.strip(), u_rol),
+                        (nuevo_usr.strip(), nuevo_pwd.strip(), nuevo_rol),
                         commit=True
                     )
-                    st.toast(f"✅ Usuario {u_nombre} creado con éxito", icon="👤")
+                    st.toast(f"✅ Usuario '{nuevo_usr.strip()}' creado exitosamente.", icon="👥")
                     st.rerun()
-            else:
-                st.error("⚠️ Completa todos los campos.")
-                
+
     st.markdown("---")
     st.subheader("📋 Usuarios Registrados")
-    usuarios_db = db.ejecutar_query("SELECT id, usuario, rol FROM usuarios ORDER BY usuario ASC", fetch=True)
     
+    usuarios_db = db.ejecutar_query("SELECT id_usuario, usuario, rol FROM usuarios ORDER BY id_usuario ASC", fetch=True)
     if usuarios_db:
-        for usr in usuarios_db:
-            id_usr, nom_usr, rol_usr = usr
-            col_usr1, col_usr2, col_usr3 = st.columns([3, 3, 2])
-            with col_usr1:
-                st.markdown(f"**Usuario:** `{nom_usr}`")
-            with col_usr2:
-                st.markdown(f"**Rol:** `{rol_usr.capitalize()}`")
-            with col_usr3:
-                if nom_usr != st.session_state.usuario_nombre:
-                    if st.button("🗑️ Eliminar", key=f"del_usr_{id_usr}"):
-                        db.ejecutar_query("DELETE FROM usuarios WHERE id = %s", (id_usr,), commit=True)
-                        st.toast(f"🗑️ Usuario {nom_usr} eliminado", icon="✅")
+        for u in usuarios_db:
+            col_usr_info, col_usr_del = st.columns([4, 1])
+            with col_usr_info:
+                st.markdown(f"👤 **{u[1]}** — Rol: `{u[2]}`")
+            with col_usr_del:
+                if u[1] != st.session_state.usuario_nombre:
+                    if st.button("🗑️ Eliminar", key=f"btn_del_usr_{u[0]}", type="secondary"):
+                        db.ejecutar_query("DELETE FROM usuarios WHERE id_usuario = %s", (u[0],), commit=True)
+                        st.toast(f"🗑️ Usuario '{u[1]}' eliminado.", icon="✅")
                         st.rerun()
                 else:
-                    st.caption("(Tu cuenta activa)")
-            st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
+                    st.caption("(Sesión Actual)")
