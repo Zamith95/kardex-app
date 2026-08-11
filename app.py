@@ -456,14 +456,13 @@ else:
 
 style_css = f"""
 <style>
-/* 1. SOLUCIÓN AL PULL-TO-REFRESH EN MÓVILES (Desactiva la recarga al deslizar hacia abajo) */
+/* 1. SOLUCIÓN AL PULL-TO-REFRESH EN MÓVILES */
 html, body, .stApp, .main, [data-testid="stAppViewContainer"] {{
     overscroll-behavior-y: none !important;
     overscroll-behavior-x: none !important;
     {style_bg}
 }}
 
-/* Evita rebotar al hacer scroll en contenedores internos */
 div, section, table, .stDataFrame {{
     overscroll-behavior-y: contain !important;
 }}
@@ -525,7 +524,7 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
     color: #0D47A1;
 }}
 
-/* ESTILOS DE NAVEGACIÓN MULTIPESTAÑA CON ENLACES NATIVOS - AJUSTE DE COLOR Y CONTRASTE DE TEXTO */
+/* ESTILOS DE NAVEGACIÓN MULTIPESTAÑA - CAMBIO DE COLOR DE LETRA A BLANCO PARA NO SELECCIONADOS */
 .nav-link-btn {{
     display: block;
     width: 100%;
@@ -545,13 +544,13 @@ section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p, secti
 }}
 .nav-link-inactive {{
     background-color: transparent !important;
-    color: #000000 !important;
+    color: #FFFFFF !important; /* TEXTO EN COLOR BLANCO PARA NO SELECCIONADOS */
     border: 1px solid transparent;
 }}
 .nav-link-inactive:hover {{
-    background-color: rgba(13, 71, 161, 0.1) !important;
-    color: #0D47A1 !important;
-    border-color: #0D47A1;
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    color: #FFFFFF !important;
+    border-color: rgba(255, 255, 255, 0.3);
 }}
 </style>
 
@@ -563,7 +562,6 @@ document.addEventListener('click', function(e) {{
         const isSidebarButton = e.target.closest('section[data-testid="stSidebar"] button, section[data-testid="stSidebar"] a');
         if (isSidebarButton) {{
             setTimeout(() => {{
-                // Simula clic en el botón de cerrar la barra lateral de Streamlit
                 const closeBtn = parent.document.querySelector('button[data-testid="stSidebarCollapseButton"]') || 
                                  parent.document.querySelector('section[data-testid="stSidebar"] button[aria-label="Close"]') ||
                                  document.querySelector('button[data-testid="stSidebarCollapseButton"]');
@@ -645,7 +643,6 @@ total_alertas = len(alertas_sin_stock) + len(alertas_tabletas_bajo) + len(alerta
 
 @st.dialog("🚨 NOTIFICACIONES DE STOCK CRÍTICO")
 def mostrar_modal_alertas():
-    # Habilitado contenedor con scroll de ratón nativo
     with st.container(height=400):
         if alertas_sin_stock:
             st.error(f"🔴 **PRODUCTOS SIN STOCK (0 UNIDADES):** ({len(alertas_sin_stock)})")
@@ -701,7 +698,7 @@ def modal_agregar_producto_compra(lista_productos):
         
         if tot_unidades_compra > 0 and costo_total_item > 0:
             costo_u_calc = costo_total_item / tot_unidades_compra
-            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculated:** S/. {costo_u_calc:.4f} por unidad.")
+            st.caption(f"💡 **Total a ingresar:** {tot_unidades_compra} unidades | **Costo unitario calculado:** S/. {costo_u_calc:.4f} por unidad.")
             
         st.markdown("---")
         col_m_btn1, col_m_btn2 = st.columns([1, 1])
@@ -731,10 +728,9 @@ def modal_agregar_producto_compra(lista_productos):
                     st.rerun()
 
 # =====================================================================
-# BARRA LATERAL MULTIPESTAÑA REESTRUCTURADA Y OPTIMIZADA CON ENLACES NATIVOS (SOPORTE MULTIPESTAÑA)
+# BARRA LATERAL MULTIPESTAÑA REESTRUCTURADA Y OPTIMIZADA
 # =====================================================================
 
-# --- 1. CABECERA LATERAL (Alertas y Datos de Usuario) ---
 col_info, col_alerta = st.sidebar.columns([3, 1])
 
 with col_info:
@@ -746,7 +742,6 @@ with col_alerta:
         if st.button("🚨", key="btn_alerta_icono", help=f"Hay {total_alertas} artículo(s) con stock bajo o agotado", use_container_width=False):
             mostrar_modal_alertas()
 
-# --- 2. LOGO Y NOMBRE DEL NEGOCIO ---
 if st.session_state.get("logo_bytes"):
     st.sidebar.image(base64.b64decode(st.session_state.logo_bytes), use_container_width=True)
 
@@ -755,7 +750,6 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 
-# --- 3. MENÚ DE NAVEGACIÓN MULTIPESTAÑA MEDIANTE HIPERVÍNCULOS NATIVOS <a> ---
 opciones_menu = [
     ("buscar", "Buscar Producto"),
     ("registrar", "Registrar Productos"),
@@ -768,7 +762,6 @@ opciones_menu = [
 if st.session_state.get("usuario_rol") == "admin":
     opciones_menu.append(("usuarios", "Gestionar Usuarios"))
 
-# Renderizar enlaces HTML nativos para permitir anticlic / clic central / abrir en nueva pestaña
 auth_usr_param = st.query_params.get("auth_user", "")
 auth_date_param = st.query_params.get("auth_date", "")
 
@@ -777,7 +770,6 @@ for id_pantalla, nombre_boton in opciones_menu:
     clase_css = "nav-link-btn nav-link-active" if es_activo else "nav-link-btn nav-link-inactive"
     label_btn = f"🔹 {nombre_boton}" if es_activo else f"▫️ {nombre_boton}"
     
-    # Construcción de la URL dinámica conservando las credenciales activas
     query_url = f"?pantalla={id_pantalla}"
     if auth_usr_param and auth_date_param:
         query_url += f"&auth_user={auth_usr_param}&auth_date={auth_date_param}"
@@ -789,7 +781,6 @@ for id_pantalla, nombre_boton in opciones_menu:
 
 st.sidebar.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
 
-# --- 4. BOTÓN DE SALIDA / PUERTITA ---
 col_vacia, col_puerta = st.sidebar.columns([3, 1])
 with col_puerta:
     if st.button("🚪", key="btn_cerrar_sesion", help="Cerrar Sesión", use_container_width=False):
@@ -799,7 +790,6 @@ with col_puerta:
 
 menu_url = st.session_state.pantalla_activa
 
-# TITULO PRINCIPAL DE LA PÁGINA
 st.title(f"💊 Kardex - {st.session_state.nombre_negocio}")
 
 # =====================================================================
@@ -936,7 +926,6 @@ if menu_url == "buscar":
                         confirmar_borrado = st.button("🗑️ Eliminar Producto", key="btn_delete", use_container_width=True)
                     
                     if st.session_state.editando_id == id_p:
-                        # Formulario con keys fijas para evitar el parpadeo / recarga visual intermitente
                         with st.form("edit_form_popup", clear_on_submit=False):
                             st.write("✏️ **Corregir Datos del Producto**")
                             
@@ -1041,7 +1030,6 @@ if menu_url == "buscar":
                     with col_m3:
                         st.metric("Ganancia Neta", f"S/. {g_mes_tot:.2f}")
 
-        # TABLA GENERAL
         st.markdown("---")
         st.subheader("📋 Lista de Inventario (Orden Alfabético)")
         
@@ -1130,7 +1118,7 @@ if menu_url == "buscar":
                     )
 
 # =====================================================================
-# PANTALLA 2: REGISTRAR NUEVO PRODUCTO
+# PANTALLA 2: REGISTRAR NUEVO PRODUCTO (CON AUTORELLENADO DE PLANTILLA)
 # =====================================================================
 elif menu_url == "registrar":
     st.header("📝 Registrar Nuevo Producto en el Inventario")
@@ -1146,17 +1134,41 @@ elif menu_url == "registrar":
     
     labs_query = ejecutar_query("SELECT DISTINCT laboratorio FROM productos WHERE laboratorio IS NOT NULL AND laboratorio != '' ORDER BY laboratorio ASC", fetch=True)
     laboratorios_existentes = [l['laboratorio'] for l in labs_query] if labs_query else []
+
+    # --- NUEVA OPCIÓN: BASE DE DATOS DE PLANTILLAS REGISTRADAS PARA AUTORELLENAR ---
+    dict_plantillas = {f"{p['nombre']} ({p['marca']})": p for p in todos_productos} if todos_productos else {}
+    prod_base_sel = st.selectbox(
+        "💡 Basarse en un producto ya registrado (Opcional - Autorrellena los datos):",
+        ["[ Crear nuevo producto desde cero ]"] + list(dict_plantillas.keys()),
+        disabled=disabled_mode,
+        key=f"plantilla_prod_{k}"
+    )
+
+    val_nombre_defecto = ""
+    val_marca_defecto = ""
+    val_lab_defecto = "[ Escribir un nuevo laboratorio ]"
+    val_pres_defecto = "Tableta / Cápsula"
+
+    if prod_base_sel != "[ Crear nuevo producto desde cero ]":
+        p_base = dict_plantillas[prod_base_sel]
+        val_nombre_defecto = p_base['nombre']
+        val_marca_defecto = p_base['marca']
+        val_pres_defecto = p_base['presentacion'] if p_base['presentacion'] in ["Tableta / Cápsula", "Jarabe / Líquido", "Crema / Pomada", "Frasco / Pote", "Inyectable", "Unidad"] else "Tableta / Cápsula"
+        if p_base['laboratorio'] and p_base['laboratorio'] in laboratorios_existentes:
+            val_lab_defecto = p_base['laboratorio']
     
     st.subheader("Información Básica")
-    nombre_prod = st.text_input("Nombre Comercial del Producto / Marca", placeholder="Escribe el nombre aquí...", key=f"nombre_{k}", disabled=disabled_mode)
+    nombre_prod = st.text_input("Nombre Comercial del Producto / Marca", value=val_nombre_defecto, placeholder="Escribe el nombre aquí...", key=f"nombre_{k}", disabled=disabled_mode)
     
     col_basica1, col_basica2 = st.columns(2)
     with col_basica1:
-        marca_principio = st.text_input("Principio Activo", placeholder="Ej: Paracetamol / Piritionato de zinc", key=f"marca_{k}", disabled=disabled_mode)
+        marca_principio = st.text_input("Principio Activo", value=val_marca_defecto, placeholder="Ej: Paracetamol / Piritionato de zinc", key=f"marca_{k}", disabled=disabled_mode)
     with col_basica2:
+        idx_lab = (["[ Escribir un nuevo laboratorio ]"] + laboratorios_existentes).index(val_lab_defecto) if val_lab_defecto in (["[ Escribir un nuevo laboratorio ]"] + laboratorios_existentes) else 0
         opcion_lab = st.selectbox(
             "Laboratorio / Fabricante (Sugerencia o Ingreso)",
             ["[ Escribir un nuevo laboratorio ]"] + laboratorios_existentes,
+            index=idx_lab,
             help="Selecciona de los laboratorios anteriormente registrados o escribe uno nuevo abajo.",
             key=f"opcion_lab_{k}",
             disabled=disabled_mode
@@ -1168,9 +1180,12 @@ elif menu_url == "registrar":
         
     col_pres_vence1, col_pres_vence2 = st.columns(2)
     with col_pres_vence1:
+        opciones_p = ["Tableta / Cápsula", "Jarabe / Líquido", "Crema / Pomada", "Frasco / Pote", "Inyectable", "Unidad"]
+        idx_p = opciones_p.index(val_pres_defecto) if val_pres_defecto in opciones_p else 0
         presentacion = st.selectbox(
             "Presentación del Producto",
-            ["Tableta / Cápsula", "Jarabe / Líquido", "Crema / Pomada", "Frasco / Pote", "Inyectable", "Unidad"],
+            opciones_p,
+            index=idx_p,
             key=f"pres_{k}",
             disabled=disabled_mode
         )
