@@ -1622,11 +1622,11 @@ elif menu_url == "reportes":
     st.markdown("---")
 
     if tipo_reporte_sel == "💵 Reporte de Ventas":
-        col_tit_v, col_btn_edit_v = st.columns([3, 1])
+        col_tit_v, col_btn_edit_v = st.columns([0.92, 0.08])
         with col_tit_v:
             st.subheader("💵 Reporte Exclusivo de Ventas y Ganancias")
         with col_btn_edit_v:
-            if st.button("✏️", type="primary", use_container_width=True):
+            if st.button("✏️", type="primary"):
                 modal_editar_ventas()
         
         filtro_tiempo = st.selectbox("Selecciona Periodo:", ["Hoy", "Esta Semana", "Este Mes", "Rango Personalizado"], key="f_ventas_exc")
