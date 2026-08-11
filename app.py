@@ -246,8 +246,8 @@ if "auth_user" in cookie_params and "auth_date" in cookie_params:
         if res_u:
             u_data = res_u[0]
             st.session_state.logged_in = True
-            st.session_state.usuario_nombre = u_data['usuario']
-            st.session_state.usuario_rol = u_data['rol']
+            st.session_state.usuario_nombre = u_data[0]
+            st.session_state.usuario_rol = u_data[1]
             st.session_state.fecha_login = fecha_hoy_str
 
 if "fecha_login" not in st.session_state:
@@ -474,14 +474,14 @@ def modal_login():
             if res:
                 u_data = res[0]
                 st.session_state.logged_in = True
-                st.session_state.usuario_nombre = u_data['usuario']
-                st.session_state.usuario_rol = u_data['rol']
+                st.session_state.usuario_nombre = u_data[0]
+                st.session_state.usuario_rol = u_data[2]
                 st.session_state.fecha_login = fecha_hoy_str
                 
-                st.query_params["auth_user"] = u_data['usuario']
+                st.query_params["auth_user"] = u_data[0]
                 st.query_params["auth_date"] = fecha_hoy_str
                 
-                st.toast(f"Bienvenido {u_data['usuario']} ({u_data['rol']})", icon="🔑")
+                st.toast(f"Bienvenido {u_data[0]} ({u_data[2]})", icon="🔑")
                 st.rerun()
             else:
                 st.error("❌ Usuario o contraseña incorrectos")
@@ -882,15 +882,15 @@ if menu_url == "buscar":
                 
                 if ventas_prod:
                     for v in ventas_prod:
-                        f_v = v['fecha']
+                        f_v = v[0]
                         if f_v >= inicio_semana:
-                            v_semana_tot += float(v['monto_total'])
-                            c_semana_tot += float(v['costo_total_capital'])
-                            g_semana_tot += float(v['ingreso_neto'])
+                            v_semana_tot += float(v[1])
+                            c_semana_tot += float(v[2])
+                            g_semana_tot += float(v[3])
                         if f_v >= inicio_mes:
-                            v_mes_tot += float(v['monto_total'])
-                            c_mes_tot += float(v['costo_total_capital'])
-                            g_mes_tot += float(v['ingreso_neto'])
+                            v_mes_tot += float(v[1])
+                            c_mes_tot += float(v[2])
+                            g_mes_tot += float(v[3])
                 
                 periodo_sel = st.radio("Filtrar rendimiento por:", ["Esta Semana", "Este Mes"], horizontal=True)
                 col_m1, col_m2, col_m3 = st.columns(3)
@@ -1015,7 +1015,7 @@ elif menu_url == "registrar":
     k = st.session_state.reset_id
     
     labs_query = db.ejecutar_query("SELECT DISTINCT laboratorio FROM productos WHERE laboratorio IS NOT NULL AND laboratorio != '' ORDER BY laboratorio ASC", fetch=True)
-    laboratorios_existentes = [l['laboratorio'] for l in labs_query] if labs_query else []
+    laboratorios_existentes = [l[0] for l in labs_query] if labs_query else []
 
     dict_plantillas = {f"{p['nombre']} ({p['marca']})": p for p in todos_productos} if todos_productos else {}
     prod_base_sel = st.selectbox(
@@ -1871,16 +1871,17 @@ elif menu_url == "reportes":
         else:
             rows_v = []
             for p in prods_venc:
-                dias_restantes = (p['fecha_vencimiento'] - fecha_actual).days
+                fecha_venc_item = p[6]
+                dias_restantes = (fecha_venc_item - fecha_actual).days if fecha_venc_item else 0
                 rows_v.append({
-                    "Producto": p['nombre'],
-                    "Principio Activo": p['marca'],
-                    "Laboratorio": p['laboratorio'] if p['laboratorio'] else "-",
-                    "Presentación": p['presentacion'],
-                    "Stock Unit. Total": p['stock_actual_unidades'],
-                    "Costo Unit. S/.": p['precio_costo_unidad'],
-                    "Riesgo Capital (S/.)": p['stock_actual_unidades'] * p['precio_costo_unidad'],
-                    "Fecha Vencimiento": p['fecha_vencimiento'].strftime("%d/%m/%Y"),
+                    "Producto": p[0],
+                    "Principio Activo": p[1],
+                    "Laboratorio": p[2] if p[2] else "-",
+                    "Presentación": p[3],
+                    "Stock Unit. Total": p[4],
+                    "Costo Unit. S/.": p[5],
+                    "Riesgo Capital (S/.)": p[4] * p[5],
+                    "Fecha Vencimiento": fecha_venc_item.strftime("%d/%m/%Y") if fecha_venc_item else "-",
                     "Días Restantes": dias_restantes
                 })
                 
