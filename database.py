@@ -53,14 +53,13 @@ def ejecutar_consulta(query, params=None):
 def ejecutar_query(query, params=None, fetch=False, commit=False):
     conn = get_connection()
     
-    # Formateo seguro de parámetros (%s -> :param_X) para SQLAlchemy
     formatted_params = {}
     query_mod = query
 
     if isinstance(params, (tuple, list)):
         for idx, val in enumerate(params):
             param_key = f"param_{idx}"
-            # Reemplazar exactamente la primera ocurrencia de %s que no sea escapada
+            # Reemplazar la primera ocurrencia de %s
             query_mod = re.sub(r'%s', f":{param_key}", query_mod, count=1)
             formatted_params[param_key] = val
     elif isinstance(params, dict):
