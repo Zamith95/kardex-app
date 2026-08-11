@@ -2021,63 +2021,107 @@ elif menu_url == "reportes":
             f_fin_c = hoy
         else:
             with col_c_p2:
-                f_inicio_c = st.date_input("Desde:", hoy - timedelta(days=30), format="DD/MM/YYYY", key="c_desde")
-                f_fin_c = st.date_input("Hasta:", hoy, format="DD/MM/YYYY", key="c_hasta")
+                col_c_d1, col_c_d2 = st.columns(2)
+                with col_c_d1:
+                    f_inicio_c = st.date_input("Desde:", hoy - timedelta(days=30), format="DD/MM/YYYY", key="c_desde")
+                with col_c_d2:
+                    f_fin_c = st.date_input("Hasta:", hoy, format="DD/MM/YYYY", key="c_hasta")
 
         query_compras = """
-            SELECT m.fecha, m.tipo_movimiento, p.nombre, p.marca, p.presentacion, m.unidades, m.blisters, m.cajas, m.costo_total_capital
+            SELECT m.fecha, m.tipo_movimiento, p.nombre, p.marca, p.presentacion,
+                   m.cajas, m.blisters, m.unidades,
+                   (m.unidades + (m.blisters * p.unidades_por_blister) + ROUND(m.cajas * p.unidades_por_caja)) AS total_unidades_compradas,
+                   m.costo_total_capital
             FROM movimientos m
             JOIN productos p ON m.id_producto = p.id_producto
             WHERE m.fecha >= %s AND m.fecha <= %s AND m.tipo_movimiento LIKE 'INGRESO%%'
-            ORDER BY m.fecha DESC, p.nombre ASC
+            ORDER BY m.fecha DESC, m.id_movimiento DESC
         """
         compras_data = db.ejecutar_query(query_compras, (f_inicio_c, f_fin_c), fetch=True)
-        
+
         if not compras_data:
-            st.info("No se registraron compras en el período seleccionado.")
+            st.info("No se registraron ingresos de mercancía/compras en el rango seleccionado.")
         else:
-            df_compras = pd.DataFrame(compras_data, columns=[
-                "Fecha Compra", "Documento / Detalle", "Producto", "Principio Activo", "Presentación", "Unidades", "Blísters", "Cajas", "Inversión Total (S/.)"
-            ])
-            
-            df_compras_disp = df_compras.copy()
-            df_compras_disp["Fecha Compra"] = pd.to_datetime(df_compras_disp["Fecha Compra"]).dt.strftime("%d/%m/%Y")
-            
-            total_inversion_compras = df_compras["Inversión Total (S/.)"].sum()
-            
-            st.metric(label="💵 Inversión Total en Compras", value=f"S/. {total_inversion_compras:,.2f}")
-            st.dataframe(df_compras_disp, use_container_width=True)
-            
-            df_comp_excel = df_compras_disp.copy()
-            df_comp_excel.insert(0, "N° Item", range(1, len(df_comp_excel) + 1))
-            
-            output_c = io.BytesIO()
-            with pd.ExcelWriter(output_c, engine='openpyxl') as writer:
-                df_comp_excel.to_excel(writer, sheet_name="Compras", index=False, startrow=4)
+            filas_c = []
+            tot_inversion = 0.0
+            tot_unid_c = 0
+
+            for c in compras_data:
+                f_c = c[0]
+                if isinstance(f_c, str):
+                    f_c = datetime.strptime(f_c, "%Y-%m-%d").date()
+                elif isinstance(f_c, datetime):
+                    f_c = f_c.date()
+
+                doc_info = str(c[1]).replace("INGRESO (", "").replace(")", "")
+                n_prod = c[2]
+                m_prod = c[3]
+                p_prod = c[4]
+                c_cajas = float(c[5] or 0)
+                c_blis = int(c[6] or 0)
+                c_unid = int(c[7] or 0)
+                tot_u = int(c[8] or 0)
+                costo_tot = float(c[9] or 0.0)
+
+                tot_inversion += costo_tot
+                tot_unid_c += tot_u
+
+                det_str = f"{c_cajas:.2f}".rstrip('0').rstrip('.') + " Cajas" if c_cajas > 0 else ""
+                if c_blis > 0:
+                    det_str += f" + {c_blis} Blís." if det_str else f"{c_blis} Blís."
+                if c_unid > 0:
+                    det_str += f" + {c_unid} Unid." if det_str else f"{c_unid} Unid."
+
+                filas_c.append({
+                    "Fecha": f_c.strftime("%d/%m/%Y"),
+                    "Comprobante": doc_info,
+                    "Producto": f"{n_prod} ({m_prod})",
+                    "Presentación": p_prod,
+                    "Detalle Cantidad": det_str if det_str else f"{tot_u} u.",
+                    "Unidades Compradas": tot_u,
+                    "Inversión Total (S/.)": f"S/. {costo_tot:.2f}"
+                })
+
+            col_mc1, col_mc2 = st.columns(2)
+            with col_mc1:
+                st.metric("📦 Total Unidades Adquiridas", f"{tot_unid_c:,} u.")
+            with col_mc2:
+                st.metric("💵 Total Inversión en Compras", f"S/. {tot_inversion:,.2f}")
+
+            st.markdown("---")
+            df_compras = pd.DataFrame(filas_c)
+            st.dataframe(df_compras, use_container_width=True)
+
+            df_c_excel = df_compras.copy()
+            df_c_excel.insert(0, "N° Item", range(1, len(df_c_excel) + 1))
+
+            output_c_e = io.BytesIO()
+            with pd.ExcelWriter(output_c_e, engine='openpyxl') as writer:
+                df_c_excel.to_excel(writer, sheet_name="Compras", index=False, startrow=4)
                 workbook = writer.book
                 worksheet = writer.sheets["Compras"]
-                
-                worksheet["A1"] = f"REPORTE DE COMPRAS E INVERSIÓN - {st.session_state.nombre_negocio.upper()}"
+
+                worksheet["A1"] = f"REPORTE DE COMPRAS E INGRESO DE STOCK - {st.session_state.nombre_negocio.upper()}"
                 worksheet["A2"] = f"Periodo: {f_inicio_c.strftime('%d/%m/%Y')} al {f_fin_c.strftime('%d/%m/%Y')}"
                 worksheet["A3"] = f"Generado el: {obtener_fecha_hoy().strftime('%d/%m/%Y')} {datetime.now().strftime('%H:%M')}"
-                
+
                 for col in worksheet.columns:
                     max_len = max(len(str(cell.value or '')) for cell in col)
                     col_letter = col[0].column_letter
                     worksheet.column_dimensions[col_letter].width = max(max_len + 3, 12)
-                    
-            excel_c_bytes = output_c.getvalue()
+
+            excel_c_bytes = output_c_e.getvalue()
             pdf_c_bytes = generar_pdf_bonito(
-                df_comp_excel,
+                df_c_excel,
                 titulo_reporte="Reporte de Compras e Inversión",
                 subti_reporte=f"Establecimiento: {st.session_state.nombre_negocio} | Periodo: {f_inicio_c.strftime('%d/%m/%Y')} al {f_fin_c.strftime('%d/%m/%Y')}",
                 es_inventario=False
             )
-            
+
             st.write("")
             col_c_d1, col_c_d2, col_c_d3 = st.columns([2, 1, 2])
             with col_c_d2:
-                with st.popover("📥 Descargar", use_container_width=True):
+                with st.popover("📥 Descargar Reporte", use_container_width=True):
                     st.download_button(
                         label="Excel (.xlsx)",
                         data=excel_c_bytes,
@@ -2098,102 +2142,103 @@ elif menu_url == "reportes":
 # =====================================================================
 elif menu_url == "config":
     st.header("⚙️ Configuración del Sistema")
-    
+
     if st.session_state.usuario_rol != "admin":
-        st.warning("🔒 Solo los usuarios Administradores pueden cambiar la configuración de la empresa y la interfaz.")
+        st.warning("🔒 Acceso Restringido: Solo administradores pueden realizar cambios en la configuración global.")
     else:
-        st.subheader("Personalización de Marca e Interfaz")
-        
-        with st.form("form_configuracion_sistema", clear_on_submit=False):
-            nuevo_nombre_negocio = st.text_input("Nombre de la Botica / Farmacia", value=st.session_state.nombre_negocio)
-            
-            opciones_temas = list(config_temas.keys())
-            idx_tema = opciones_temas.index(st.session_state.tema_color) if st.session_state.tema_color in opciones_temas else 0
-            nuevo_tema_color = st.selectbox("Tema Visual / Paleta de Colores", opciones_temas, index=idx_tema)
-            
-            st.markdown("---")
-            col_up1, col_up2 = st.columns(2)
-            with col_up1:
-                nuevo_logo = st.file_uploader("Subir nuevo Logo (PNG/JPG)", type=["png", "jpg", "jpeg"])
-            with col_up2:
-                nuevo_fondo = st.file_uploader("Subir Imagen de Fondo de Pantalla (Opcional)", type=["png", "jpg", "jpeg"])
+        st.subheader("🎨 Apariencia y Personalización")
 
-            guardar_config = st.form_submit_button("💾 Guardar Cambios de Configuración", type="primary")
+        nuevo_nombre = st.text_input("Nombre de la Botica / Farmacia:", value=st.session_state.nombre_negocio)
 
-            if guardar_config:
-                logo_base64 = st.session_state.logo_bytes
-                fondo_base64 = st.session_state.fondo_bytes
+        temas_opciones = ["Celeste Pastel", "Gris Elegante", "Azul Profesional", "Blanco Puro", "Oscuro Clásico"]
+        idx_t = temas_opciones.index(st.session_state.tema_color) if st.session_state.tema_color in temas_opciones else 0
+        nuevo_tema = st.selectbox("Tema de Color de Interfaz:", temas_opciones, index=idx_t)
 
-                if nuevo_logo:
-                    logo_base64 = base64.b64encode(nuevo_logo.read()).decode("utf-8")
+        st.markdown("---")
+        st.subheader("🖼️ Logotipo y Fondo")
 
-                if nuevo_fondo:
-                    fondo_base64 = base64.b64encode(nuevo_fondo.read()).decode("utf-8")
+        col_img1, col_img2 = st.columns(2)
 
-                db.ejecutar_query("DELETE FROM configuracion", commit=True)
-                db.ejecutar_query(
-                    "INSERT INTO configuracion (nombre_negocio, tema_color, logo_bytes, fondo_bytes) VALUES (%s, %s, %s, %s)",
-                    (nuevo_nombre_negocio, nuevo_tema_color, logo_base64, fondo_base64),
-                    commit=True
-                )
+        with col_img1:
+            st.markdown("**Logo de la empresa**")
+            up_logo = st.file_uploader("Subir nuevo Logo (PNG/JPG):", type=["png", "jpg", "jpeg"], key="up_logo_cfg")
+            if up_logo:
+                st.session_state.logo_bytes = base64.b64encode(up_logo.read()).decode()
+                st.image(base64.b64decode(st.session_state.logo_bytes), width=120)
 
-                st.session_state.nombre_negocio = nuevo_nombre_negocio
-                st.session_state.tema_color = nuevo_tema_color
-                st.session_state.logo_bytes = logo_base64
-                st.session_state.fondo_bytes = fondo_base64
+        with col_img2:
+            st.markdown("**Imagen de Fondo (Opcional)**")
+            up_fondo = st.file_uploader("Subir nueva Imagen de Fondo:", type=["png", "jpg", "jpeg"], key="up_fondo_cfg")
+            if up_fondo:
+                st.session_state.fondo_bytes = base64.b64encode(up_fondo.read()).decode()
 
-                st.cache_data.clear()
-                st.toast("⚙️ ¡Configuración guardada exitosamente!", icon="✅")
-                st.rerun()
+        if st.button("💾 Guardar Configuración", type="primary"):
+            st.session_state.nombre_negocio = nuevo_nombre
+            st.session_state.tema_color = nuevo_tema
+
+            query_up_cfg = """
+                UPDATE configuracion 
+                SET nombre_negocio = %s, tema_color = %s, logo_bytes = %s, fondo_bytes = %s 
+                WHERE id = 1
+            """
+            db.ejecutar_query(query_up_cfg, (nuevo_nombre, nuevo_tema, st.session_state.logo_bytes, st.session_state.fondo_bytes), commit=True)
+            st.cache_data.clear()
+            st.success("🎉 ¡Configuración actualizada correctamente!")
+            st.rerun()
 
 # =====================================================================
-# PANTALLA 7: GESTIONAR USUARIOS (ADMIN)
+# PANTALLA 7: GESTIÓN DE USUARIOS
 # =====================================================================
-elif menu_url == "usuarios" and st.session_state.get("usuario_rol") == "admin":
-    st.header("👥 Gestión de Usuarios y Accesos")
-    
-    st.subheader("➕ Crear Nuevo Usuario")
-    with st.form("form_crear_usuario", clear_on_submit=True):
-        col_u1, col_u2, col_u3 = st.columns(3)
-        with col_u1:
-            nuevo_usr = st.text_input("Usuario (Login)")
-        with col_u2:
-            nuevo_pwd = st.text_input("Contraseña", type="password")
-        with col_u3:
-            nuevo_rol = st.selectbox("Rol de Acceso", ["vendedor", "admin"])
-            
-        btn_crear_u = st.form_submit_button("💾 Registrar Usuario", type="primary")
-        
-        if btn_crear_u:
-            if not nuevo_usr.strip() or not nuevo_pwd.strip():
-                st.error("⚠️ El usuario y la contraseña no pueden estar vacíos.")
-            else:
-                res_exist = db.ejecutar_query("SELECT usuario FROM usuarios WHERE usuario = %s", (nuevo_usr.strip(),), fetch=True)
-                if res_exist:
-                    st.error("⚠️ El nombre de usuario ya se encuentra registrado.")
+elif menu_url == "usuarios":
+    st.header("👥 Gestión de Usuarios y Permisos")
+
+    if st.session_state.usuario_rol != "admin":
+        st.error("🔒 Acceso Denegado: Esta pantalla es exclusiva para el administrador.")
+    else:
+        st.subheader("➕ Crear Nuevo Usuario")
+
+        with st.form("form_nuevo_usr", clear_on_submit=True):
+            col_u1, col_u2, col_u3 = st.columns(3)
+            with col_u1:
+                n_usr = st.text_input("Nombre de Usuario:")
+            with col_u2:
+                n_pwd = st.text_input("Contraseña:", type="password")
+            with col_u3:
+                n_rol = st.selectbox("Rol de Acceso:", ["vendedor", "admin"])
+
+            btn_crear_u = st.form_submit_button("💾 Crear Usuario")
+
+            if btn_crear_u:
+                if not n_usr or not n_pwd:
+                    st.error("⚠️ Debes completar todos los campos.")
                 else:
                     db.ejecutar_query(
                         "INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)",
-                        (nuevo_usr.strip(), nuevo_pwd.strip(), nuevo_rol),
+                        (n_usr.strip(), n_pwd.strip(), n_rol),
                         commit=True
                     )
-                    st.toast(f"✅ Usuario '{nuevo_usr.strip()}' creado exitosamente.", icon="👥")
+                    st.success(f"🎉 ¡Usuario '{n_usr}' creado correctamente con el rol de {n_rol}!")
                     st.rerun()
 
-    st.markdown("---")
-    st.subheader("📋 Usuarios Registrados")
-    
-    usuarios_db = db.ejecutar_query("SELECT id_usuario, usuario, rol FROM usuarios ORDER BY id_usuario ASC", fetch=True)
-    if usuarios_db:
-        for u in usuarios_db:
-            col_usr_info, col_usr_del = st.columns([4, 1])
-            with col_usr_info:
-                st.markdown(f"👤 **{u[1]}** — Rol: `{u[2]}`")
-            with col_usr_del:
-                if u[1] != st.session_state.usuario_nombre:
-                    if st.button("🗑️ Eliminar", key=f"btn_del_usr_{u[0]}", type="secondary"):
-                        db.ejecutar_query("DELETE FROM usuarios WHERE id_usuario = %s", (u[0],), commit=True)
-                        st.toast(f"🗑️ Usuario '{u[1]}' eliminado.", icon="✅")
+        st.markdown("---")
+        st.subheader("📋 Usuarios Registrados")
+
+        usr_list = db.ejecutar_query("SELECT id_usuario, usuario, rol FROM usuarios ORDER BY id_usuario ASC", fetch=True)
+
+        if usr_list:
+            df_usr = pd.DataFrame(usr_list, columns=["ID", "Usuario", "Rol"])
+            st.dataframe(df_usr, use_container_width=True)
+
+            st.markdown("### 🗑️ Eliminar Usuario")
+            u_dict = {f"{u[1]} ({u[2]})": u[0] for u in usr_list if u[1] != st.session_state.usuario_nombre}
+
+            if u_dict:
+                u_del_sel = st.selectbox("Selecciona un usuario para eliminar:", [""] + list(u_dict.keys()))
+                if u_del_sel != "":
+                    id_u_del = u_dict[u_del_sel]
+                    if st.button("❌ Confirmar Eliminación", type="secondary"):
+                        db.ejecutar_query("DELETE FROM usuarios WHERE id_usuario = %s", (id_u_del,), commit=True)
+                        st.success("¡Usuario eliminado correctamente!")
                         st.rerun()
-                else:
-                    st.caption("(Sesión Actual)")
+            else:
+                st.caption("*(No hay otros usuarios disponibles para eliminar)*")
