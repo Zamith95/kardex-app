@@ -23,13 +23,14 @@ def cargar_configuracion_db():
         st.error(f"Error al cargar configuración: {e}")
     return None
 
-# 2. Función faltante requerida por app.py (Resuelve AttributeError)
+# 2. Cargar productos (Retorna un DataFrame válido o None si está vacío/falla)
 @st.cache_data(ttl=60)
 def cargar_productos_db():
     conn = get_connection()
     try:
-        # Ajusta las columnas si tu tabla 'productos' tiene nombres diferentes
         df = conn.query("SELECT * FROM productos;", ttl=0)
+        if df is None or df.empty:
+            return None
         return df
     except Exception as e:
         st.error(f"Error al cargar productos: {e}")
@@ -63,14 +64,14 @@ def ejecutar_query(query, params=None, fetch=False):
     if fetch:
         try:
             df = conn.query(query, params=params, ttl=0)
-            if df.empty:
+            if df is None or df.empty:
                 return []
             return [tuple(x) for x in df.to_numpy()]
         except Exception:
-            # En caso de desconexión SSL/Neon, intenta resetear la conexión una vez
+            # En caso de desconexión SSL/Neon, intenta resetear el caché y reconectar
             st.cache_data.clear()
             df = conn.query(query, params=params, ttl=0)
-            if df.empty:
+            if df is None or df.empty:
                 return []
             return [tuple(x) for x in df.to_numpy()]
     else:
