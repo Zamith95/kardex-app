@@ -11,7 +11,7 @@ def cargar_configuracion_db():
     conn = get_connection()
     try:
         df = conn.query("SELECT nombre_negocio, tema_color, logo_bytes, fondo_bytes FROM configuracion WHERE id = 1;", ttl=0)
-        if not df.empty:
+        if df is not None and not df.empty:
             row = df.iloc[0]
             return {
                 "nombre_negocio": row["nombre_negocio"],
@@ -23,15 +23,16 @@ def cargar_configuracion_db():
         st.error(f"Error al cargar configuración: {e}")
     return None
 
-# 2. Cargar productos (Retorna un DataFrame válido o None si está vacío/falla)
+# 2. Cargar productos (Retorna una lista de diccionarios que app.py puede iterar por clave)
 @st.cache_data(ttl=60)
 def cargar_productos_db():
     conn = get_connection()
     try:
-        df = conn.query("SELECT * FROM productos;", ttl=0)
+        df = conn.query("SELECT * FROM productos ORDER BY nombre ASC;", ttl=0)
         if df is None or df.empty:
             return None
-        return df
+        # Convertir el DataFrame a lista de diccionarios para compatibilidad total con app.py
+        return df.to_dict(orient="records")
     except Exception as e:
         st.error(f"Error al cargar productos: {e}")
         return None
@@ -48,18 +49,20 @@ def ejecutar_consulta(query, params=None):
     conn = get_connection()
     return conn.query(query, params=params, ttl=0)
 
-# 5. Función compatible para consultas genéricas (Maneja %s, tuplas y diccionarios)
-def ejecutar_query(query, params=None, fetch=False):
+# 5. Función compatible para consultas genéricas (Maneja %s, tuplas, diccionarios y commit opcional)
+def ejecutar_query(query, params=None, fetch=False, commit=False):
     conn = get_connection()
     
-    # Reemplaza los placeholders estilo %s por parámetros con nombre
+    # Reemplaza los placeholders estilo %s por parámetros con nombre para SQLAlchemy
     if isinstance(params, (tuple, list)):
         formatted_params = {}
+        query_mod = query
         for idx, val in enumerate(params):
             param_key = f"param_{idx}"
-            query = query.replace("%s", f":{param_key}", 1)
+            query_mod = query_mod.replace("%s", f":{param_key}", 1)
             formatted_params[param_key] = val
         params = formatted_params
+        query = query_mod
 
     if fetch:
         try:
