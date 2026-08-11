@@ -1644,7 +1644,6 @@ elif menu_url == "reportes":
             
             col_p1, col_p2 = st.columns([3, 2])
             with col_p1:
-                # LISTA LIMPIA CON PRIMERA OPCIÓN EN BLANCO PARA CLIC DIRECTO
                 prod_sel_rep = st.selectbox(
                     "📦 Selecciona el Producto:",
                     [""] + list(dict_prods_rep.keys()),
@@ -2042,117 +2041,96 @@ elif menu_url == "reportes":
                     )
 
 # =====================================================================
-# PANTALLA 6: CONFIGURACIÓN GENERAL DEL SISTEMA
+# PANTALLA 6: CONFIGURACIÓN
 # =====================================================================
 elif menu_url == "config":
-    st.header("⚙️ Configuración del Negocio y Apariencia")
+    st.header("⚙️ Configuración del Sistema")
     
     if st.session_state.usuario_rol != "admin":
-        st.warning("🔒 Solo los administradores pueden cambiar la configuración de la marca o apariencia.")
+        st.warning("🔒 Acceso Restringido: Solo el Administrador puede modificar los datos del establecimiento.")
     
     disabled_mode = (st.session_state.usuario_rol != "admin")
-
-    st.subheader("1. Identidad de la Marca")
-    nuevo_nombre = st.text_input("Nombre del Establecimiento / Negocio", value=st.session_state.nombre_negocio, disabled=disabled_mode)
     
-    st.subheader("2. Estilo y Colores")
-    opciones_temas = list(config_temas.keys())
-    idx_tema_act = opciones_temas.index(st.session_state.tema_color) if st.session_state.tema_color in opciones_temas else 0
-    nuevo_tema = st.selectbox("Tema Visual de Interfaz", opciones_temas, index=idx_tema_act, disabled=disabled_mode)
-
-    st.subheader("3. Imágenes y Personalización")
-    col_img1, col_img2 = st.columns(2)
-    
-    with col_img1:
-        st.markdown("**Logo del Negocio**")
-        if st.session_state.logo_bytes:
-            st.image(base64.b64decode(st.session_state.logo_bytes), width=120)
-        uploaded_logo = st.file_uploader("Subir nuevo logo (PNG/JPG)", type=["png", "jpg", "jpeg"], key="upload_logo", disabled=disabled_mode)
-
-    with col_img2:
-        st.markdown("**Imagen de Fondo**")
-        if st.session_state.fondo_bytes:
-            st.caption("Fondo de pantalla activo actualmente.")
-        uploaded_fondo = st.file_uploader("Subir imagen de fondo", type=["png", "jpg", "jpeg"], key="upload_fondo", disabled=disabled_mode)
-
-    st.markdown("---")
-    if st.button("💾 Guardar Configuración", type="primary", disabled=disabled_mode):
-        nuevo_logo_b64 = st.session_state.logo_bytes
-        nuevo_fondo_b64 = st.session_state.fondo_bytes
+    with st.form("form_configuracion_negocio", clear_on_submit=False):
+        st.subheader("🏢 Datos de la Empresa")
         
-        if uploaded_logo is not None:
-            nuevo_logo_b64 = base64.b64encode(uploaded_logo.read()).decode('utf-8')
-        if uploaded_fondo is not None:
-            nuevo_fondo_b64 = base64.b64encode(uploaded_fondo.read()).decode('utf-8')
+        nuevo_nombre = st.text_input("Nombre de la Farmacia / Negocio", value=st.session_state.nombre_negocio, disabled=disabled_mode)
+        
+        opciones_temas = list(config_temas.keys())
+        idx_t = opciones_temas.index(st.session_state.tema_color) if st.session_state.tema_color in opciones_temas else 0
+        nuevo_tema = st.selectbox("Tema Visual / Color de Interfaz", opciones_temas, index=idx_t, disabled=disabled_mode)
+        
+        st.subheader("🖼️ Personalización de Imagen")
+        archivo_logo = st.file_uploader("Subir Nuevo Logo (PNG / JPG)", type=["png", "jpg", "jpeg"], disabled=disabled_mode)
+        archivo_fondo = st.file_uploader("Subir Imagen de Fondo de Pantalla (Opcional)", type=["png", "jpg", "jpeg"], disabled=disabled_mode)
+        
+        guardar_conf = st.form_submit_button("💾 Guardar Configuración", disabled=disabled_mode)
+        
+        if guardar_conf and st.session_state.usuario_rol == "admin":
+            logo_b64 = st.session_state.logo_bytes
+            fondo_b64 = st.session_state.fondo_bytes
             
-        db.ejecutar_query(
-            "UPDATE configuracion SET nombre_negocio=%s, tema_color=%s, logo_bytes=%s, fondo_bytes=%s WHERE id=1",
-            (nuevo_nombre, nuevo_tema, nuevo_logo_b64, nuevo_fondo_b64),
-            commit=True
-        )
-        
-        st.session_state.nombre_negocio = nuevo_nombre
-        st.session_state.tema_color = nuevo_tema
-        st.session_state.logo_bytes = nuevo_logo_b64
-        st.session_state.fondo_bytes = nuevo_fondo_b64
-        
-        st.cache_data.clear()
-        st.toast("✅ Configuración guardada correctamente", icon="💾")
-        st.rerun()
+            if archivo_logo is not None:
+                logo_b64 = base64.b64encode(archivo_logo.read()).decode('utf-8')
+            if archivo_fondo is not None:
+                fondo_b64 = base64.b64encode(archivo_fondo.read()).decode('utf-8')
+                
+            db.ejecutar_query(
+                "UPDATE configuracion SET nombre_negocio = %s, tema_color = %s, logo_bytes = %s, fondo_bytes = %s WHERE id = 1",
+                (nuevo_nombre, nuevo_tema, logo_b64, fondo_b64),
+                commit=True
+            )
+            
+            st.session_state.nombre_negocio = nuevo_nombre
+            st.session_state.tema_color = nuevo_tema
+            st.session_state.logo_bytes = logo_b64
+            st.session_state.fondo_bytes = fondo_b64
+            
+            st.cache_data.clear()
+            st.success("🎉 ¡Configuración actualizada correctamente!")
+            st.rerun()
 
 # =====================================================================
 # PANTALLA 7: GESTIÓN DE USUARIOS
 # =====================================================================
 elif menu_url == "usuarios":
-    st.header("👥 Gestión de Usuarios y Permisos")
+    st.header("👥 Gestión de Usuarios")
     
     if st.session_state.usuario_rol != "admin":
-        st.error("🔒 Acceso Denegado: Esta pantalla es exclusiva para el Administrador principal.")
-        st.stop()
-        
-    st.subheader("➕ Crear Nuevo Usuario")
-    with st.form("form_crear_usuario", clear_on_submit=True):
-        col_u1, col_u2, col_u3 = st.columns(3)
-        with col_u1:
-            nuevo_usr = st.text_input("Nombre de Usuario")
-        with col_u2:
-            nuevo_pwd = st.text_input("Contraseña", type="password")
-        with col_u3:
-            nuevo_rol = st.selectbox("Rol / Nivel de Acceso", ["vendedor", "admin"])
-            
-        btn_crear_u = st.form_submit_button("💾 Guardar Usuario", type="primary")
-        
-        if btn_crear_u:
-            if not nuevo_usr.strip() or not nuevo_pwd.strip():
-                st.error("⚠️ Usuario y Contraseña son obligatorios.")
-            else:
-                db.ejecutar_query(
-                    "INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)",
-                    (nuevo_usr.strip(), nuevo_pwd.strip(), nuevo_rol),
-                    commit=True
-                )
-                st.cache_data.clear()
-                st.toast(f"✅ Usuario '{nuevo_usr}' creado con éxito", icon="👤")
-                st.rerun()
+        st.error("🔒 Acceso Restringido: No tienes permisos para administrar cuentas de usuario.")
+    else:
+        st.subheader("➕ Registrar Nuevo Usuario")
+        with st.form("form_nuevo_usr", clear_on_submit=True):
+            col_u1, col_u2, col_u3 = st.columns(3)
+            with col_u1:
+                n_usr = st.text_input("Nombre de Usuario")
+            with col_u2:
+                n_pwd = st.text_input("Contraseña", type="password")
+            with col_u3:
+                n_rol = st.selectbox("Rol de Acceso", ["vendedor", "admin"])
                 
-    st.markdown("---")
-    st.subheader("📋 Usuarios Registrados en el Sistema")
-    
-    list_users = db.ejecutar_query("SELECT id_usuario, usuario, rol FROM usuarios ORDER BY id_usuario ASC", fetch=True)
-    
-    if list_users:
-        for u in list_users:
-            u_id, u_nombre, u_rol = u[0], u[1], u[2]
-            col_u_info, col_u_acc = st.columns([4, 1])
-            with col_u_info:
-                st.markdown(f"👤 **{u_nombre}** — *Rol:* `{u_rol}`")
-            with col_u_acc:
-                if u_nombre.lower() != "admin":
-                    if st.button("🗑️ Eliminar", key=f"del_user_{u_id}", type="secondary", use_container_width=True):
-                        db.ejecutar_query("DELETE FROM usuarios WHERE id_usuario = %s", (u_id,), commit=True)
-                        st.cache_data.clear()
-                        st.toast(f"🗑️ Usuario {u_nombre} eliminado.", icon="✅")
-                        st.rerun()
+            crear_usr = st.form_submit_button("👤 Crear Usuario")
+            
+            if crear_usr:
+                if not n_usr or not n_pwd:
+                    st.error("⚠️ Debes completar todos los campos.")
                 else:
-                    st.caption("*(Protegido)*")
-            st.markdown("<hr style='margin: 3px 0; border-color: #eee;'>", unsafe_allow_html=True)
+                    usr_ex = db.ejecutar_query("SELECT usuario FROM usuarios WHERE usuario = %s", (n_usr.strip(),), fetch=True)
+                    if usr_ex:
+                        st.error("⚠️ El usuario ya existe.")
+                    else:
+                        db.ejecutar_query(
+                            "INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)",
+                            (n_usr.strip(), n_pwd.strip(), n_rol),
+                            commit=True
+                        )
+                        st.success(f"🎉 ¡Usuario '{n_usr}' registrado exitosamente!")
+                        st.rerun()
+                        
+        st.markdown("---")
+        st.subheader("📋 Usuarios Registrados")
+        
+        lista_usrs = db.ejecutar_query("SELECT id_usuario, usuario, rol FROM usuarios ORDER BY usuario ASC", fetch=True)
+        if lista_usrs:
+            df_usrs = pd.DataFrame(lista_usrs, columns=["ID", "Usuario", "Rol"])
+            st.dataframe(df_usrs, use_container_width=True)
