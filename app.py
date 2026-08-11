@@ -726,7 +726,7 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 
-# --- 3. MENÚ DE NAVEGACIÓN PRINCIPAL CON SOPORTE A PESTAÑAS Y CLIC DERECHO ---
+# --- 3. MENÚ DE NAVEGACIÓN PRINCIPAL MEDIANTE BOTONES NATIVOS ---
 opciones_menu = [
     ("buscar", "Buscar Producto"),
     ("registrar", "Registrar Productos"),
@@ -739,19 +739,16 @@ opciones_menu = [
 if st.session_state.get("usuario_rol") == "admin":
     opciones_menu.append(("usuarios", "Gestionar Usuarios"))
 
-# Dibujar botones de enlaces nativos HTML
+# Dibujar botones de navegación nativos de Streamlit
 for id_pantalla, nombre_boton in opciones_menu:
     es_activo = (st.session_state.pantalla_activa == id_pantalla)
     tipo_btn = "primary" if es_activo else "secondary"
+    label_btn = f"🔹 {nombre_boton}" if es_activo else f"▫️ {nombre_boton}"
     
-    # st.page_link para permitir abrir en nueva pestaña con clic derecho
-    st.sidebar.page_link(
-        page="app.py",
-        label=nombre_boton,
-        query_params={"pantalla": id_pantalla},
-        icon="🔹" if es_activo else "▫️",
-        use_container_width=True
-    )
+    if st.sidebar.button(label_btn, key=f"btn_nav_{id_pantalla}", type=tipo_btn, use_container_width=True):
+        st.session_state.pantalla_activa = id_pantalla
+        st.query_params["pantalla"] = id_pantalla
+        st.rerun()
 
 # --- 4. BOTÓN DE SALIDA / PUERTITA ---
 col_vacia, col_puerta = st.sidebar.columns([3, 1])
