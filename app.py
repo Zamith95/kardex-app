@@ -607,6 +607,65 @@ def modal_agregar_producto_compra(lista_productos):
                     st.rerun()
 
 # =====================================================================
+# MODAL INTERACTIVO PARA EDITAR / ELIMINAR VENTAS POR FECHA
+# =====================================================================
+@st.dialog("✏️ Editar o Corregir Ventas por Fecha", width="large")
+def modal_editar_ventas():
+    st.write("Selecciona la fecha exacta en el calendario para consultar y corregir los productos vendidos:")
+    
+    fecha_editar = st.date_input("📅 Selecciona la Fecha a Editar:", value=obtener_fecha_hoy(), format="DD/MM/YYYY", key="input_fecha_modal_editar")
+    
+    query_v_fecha = """
+        SELECT m.id_movimiento, m.id_producto, p.nombre, p.marca, p.presentacion, 
+               m.unidades, m.blisters, p.unidades_por_blister, m.monto_total
+        FROM movimientos m
+        JOIN productos p ON m.id_producto = p.id_producto
+        WHERE m.fecha = %s AND m.tipo_movimiento = 'VENTA'
+        ORDER BY m.id_movimiento DESC
+    """
+    ventas_del_dia = db.ejecutar_query(query_v_fecha, (fecha_editar,), fetch=True)
+    
+    st.markdown("---")
+    st.markdown(f"### 📋 Productos Vendidos el `{fecha_editar.strftime('%d/%m/%Y')}`")
+    
+    if not ventas_del_dia:
+        st.info("ℹ️ No se registraron ventas en la fecha seleccionada.")
+    else:
+        for item_v in ventas_del_dia:
+            id_mov = item_v[0]
+            id_prod = item_v[1]
+            nom_prod = item_v[2]
+            marca_prod = item_v[3]
+            pres_prod = item_v[4]
+            u_sueltas = item_v[5]
+            blis_cant = item_v[6]
+            u_por_blis = item_v[7] or 1
+            monto_v = float(item_v[8])
+            
+            tot_unid_mov = u_sueltas + (blis_cant * u_por_blis)
+            
+            cant_str = f"{u_sueltas} u."
+            if blis_cant > 0:
+                cant_str += f" + {blis_cant} blís."
+                
+            col_m_info, col_m_cant, col_m_monto, col_m_del = st.columns([4, 2, 2, 2])
+            
+            with col_m_info:
+                st.markdown(f"**{nom_prod}**  \n<small style='color:gray;'>{marca_prod} - [{pres_prod}]</small>", unsafe_allow_html=True)
+            with col_m_cant:
+                st.markdown(f"📦 **{cant_str}**  \n<small style='color:gray;'>({tot_unid_mov} u. total)</small>", unsafe_allow_html=True)
+            with col_m_monto:
+                st.markdown(f"💰 **S/. {monto_v:.2f}**")
+            with col_m_del:
+                if st.button("🗑️ Eliminar", key=f"btn_del_mov_{id_mov}", type="secondary", use_container_width=True):
+                    db.ejecutar_query("DELETE FROM movimientos WHERE id_movimiento = %s", (id_mov,), commit=True)
+                    db.ejecutar_query("UPDATE productos SET stock_actual_unidades = stock_actual_unidades + %s WHERE id_producto = %s", (tot_unid_mov, id_prod), commit=True)
+                    db.cargar_productos_db.clear()
+                    st.toast(f"🗑️ Se eliminó la venta de {nom_prod} y se reintegraron {tot_unid_mov} u. al stock.", icon="✅")
+                    st.rerun()
+            st.markdown("<hr style='margin: 5px 0; border-color: #eee;'>", unsafe_allow_html=True)
+
+# =====================================================================
 # BARRA LATERAL MULTIPESTAÑA
 # =====================================================================
 col_info, col_alerta = st.sidebar.columns([3, 1])
@@ -1563,7 +1622,12 @@ elif menu_url == "reportes":
     st.markdown("---")
 
     if tipo_reporte_sel == "💵 Reporte de Ventas":
-        st.subheader("💵 Reporte Exclusivo de Ventas y Ganancias")
+        col_tit_v, col_btn_edit_v = st.columns([3, 1])
+        with col_tit_v:
+            st.subheader("💵 Reporte Exclusivo de Ventas y Ganancias")
+        with col_btn_edit_v:
+            if st.button("✏️ Editar / Corregir Ventas", type="primary", use_container_width=True):
+                modal_editar_ventas()
         
         filtro_tiempo = st.selectbox("Selecciona Periodo:", ["Hoy", "Esta Semana", "Este Mes", "Rango Personalizado"], key="f_ventas_exc")
         fecha_inicio = obtener_fecha_hoy()
