@@ -5,7 +5,7 @@ from sqlalchemy import text
 def get_connection():
     return st.connection("postgresql", type="sql")
 
-# 1. Caché de la configuración inicial del negocio (Expira en 1 hora)
+# 1. Configuración inicial
 @st.cache_data(ttl=3600)
 def cargar_configuracion_db():
     conn = get_connection()
@@ -23,7 +23,7 @@ def cargar_configuracion_db():
         st.error(f"Error al cargar configuración: {e}")
     return None
 
-# 2. Cargar productos (Retorna una lista de diccionarios que app.py puede iterar por clave)
+# 2. Cargar productos (Devuelve lista de diccionarios)
 @st.cache_data(ttl=60)
 def cargar_productos_db():
     conn = get_connection()
@@ -31,53 +31,56 @@ def cargar_productos_db():
         df = conn.query("SELECT * FROM productos ORDER BY nombre ASC;", ttl=0)
         if df is None or df.empty:
             return None
-        # Convertir el DataFrame a lista de diccionarios para compatibilidad total con app.py
         return df.to_dict(orient="records")
     except Exception as e:
         st.error(f"Error al cargar productos: {e}")
         return None
 
-# 3. Función genérica para escrituras (INSERT, UPDATE, DELETE)
+# 3. Escrituras genéricas
 def ejecutar_escritura(query, params=None):
     conn = get_connection()
     with conn.session as session:
         session.execute(text(query) if isinstance(query, str) else query, params or {})
         session.commit()
 
-# 4. Función genérica para consultas rápidas sin caché
+# 4. Consultas sin caché
 def ejecutar_consulta(query, params=None):
     conn = get_connection()
     return conn.query(query, params=params, ttl=0)
 
-# 5. Función compatible para consultas genéricas (Maneja %s, tuplas, diccionarios y commit opcional)
+# 5. Función de compatibilidad total con app.py (Soporta %s, tuples, fetch y commit)
 def ejecutar_query(query, params=None, fetch=False, commit=False):
     conn = get_connection()
     
-    # Reemplaza los placeholders estilo %s por parámetros con nombre para SQLAlchemy
+    # Convertir tupla/lista de parámetros con %s a formato SQLAlchemy (:param_X)
+    formatted_params = {}
     if isinstance(params, (tuple, list)):
-        formatted_params = {}
         query_mod = query
         for idx, val in enumerate(params):
             param_key = f"param_{idx}"
             query_mod = query_mod.replace("%s", f":{param_key}", 1)
             formatted_params[param_key] = val
-        params = formatted_params
         query = query_mod
+    elif isinstance(params, dict):
+        formatted_params = params
 
     if fetch:
         try:
-            df = conn.query(query, params=params, ttl=0)
+            df = conn.query(query, params=formatted_params if formatted_params else None, ttl=0)
             if df is None or df.empty:
                 return []
             return [tuple(x) for x in df.to_numpy()]
-        except Exception:
-            # En caso de desconexión SSL/Neon, intenta resetear el caché y reconectar
+        except Exception as e:
             st.cache_data.clear()
-            df = conn.query(query, params=params, ttl=0)
-            if df is None or df.empty:
+            try:
+                df = conn.query(query, params=formatted_params if formatted_params else None, ttl=0)
+                if df is None or df.empty:
+                    return []
+                return [tuple(x) for x in df.to_numpy()]
+            except Exception as inner_e:
+                st.error(f"Error en consulta SQL: {inner_e}")
                 return []
-            return [tuple(x) for x in df.to_numpy()]
     else:
         with conn.session as session:
-            session.execute(text(query), params or {})
+            session.execute(text(query), formatted_params)
             session.commit()
