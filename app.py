@@ -609,11 +609,11 @@ def modal_agregar_producto_compra(lista_productos):
 # =====================================================================
 # MODAL INTERACTIVO PARA EDITAR / ELIMINAR VENTAS POR FECHA
 # =====================================================================
-@st.dialog("✏️ Editar o Corregir Ventas por Fecha", width="large")
+@st.dialog("✏️", width="small")
 def modal_editar_ventas():
     st.write("Selecciona la fecha exacta en el calendario para consultar y corregir los productos vendidos:")
     
-    fecha_editar = st.date_input("📅 Selecciona la Fecha a Editar:", value=obtener_fecha_hoy(), format="DD/MM/YYYY", key="input_fecha_modal_editar")
+    fecha_editar = st.date_input("📅 Fecha:", value=obtener_fecha_hoy(), format="DD/MM/YYYY", key="input_fecha_modal_editar")
     
     query_v_fecha = """
         SELECT m.id_movimiento, m.id_producto, p.nombre, p.marca, p.presentacion, 
