@@ -231,6 +231,26 @@ def obtener_fecha_hoy():
 fecha_hoy_local = obtener_fecha_hoy()
 fecha_hoy_str = fecha_hoy_local.strftime('%Y-%m-%d')
 
+# Inicialización garantizada contra fallos por inactividad
+defaults_state = {
+    "logged_in": False,
+    "usuario_rol": None,
+    "usuario_nombre": None,
+    "fecha_login": None,
+    "pantalla_activa": "buscar",
+    "reset_form": 0,
+    "boleta_ventas": [],
+    "carrito_compras": [],
+    "reset_fecha_version": 0,
+    "reset_compra_version": 0,
+    "mensaje_exito_compra": None,
+    "reset_id": 0
+}
+
+for key, val in defaults_state.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
+
 cookie_params = st.query_params
 
 if "pantalla" in cookie_params:
@@ -240,31 +260,21 @@ if "auth_user" in cookie_params and "auth_date" in cookie_params:
     user_cookie = cookie_params.get("auth_user")
     date_cookie = cookie_params.get("auth_date")
     
-    if date_cookie == fecha_hoy_str and ("logged_in" not in st.session_state or not st.session_state.logged_in):
-        res_u = db.ejecutar_query("SELECT usuario, rol FROM usuarios WHERE usuario = %s", (user_cookie,), fetch=True)
-        if res_u:
-            u_data = res_u[0]
-            st.session_state.logged_in = True
-            st.session_state.usuario_nombre = u_data[0]
-            st.session_state.usuario_rol = u_data[1]
-            st.session_state.fecha_login = fecha_hoy_str
-
-if "fecha_login" not in st.session_state:
-    st.session_state.fecha_login = None
+    if date_cookie == fecha_hoy_str:
+        if not st.session_state.logged_in or st.session_state.usuario_nombre != user_cookie:
+            res_u = db.ejecutar_query("SELECT usuario, rol FROM usuarios WHERE usuario = %s", (user_cookie,), fetch=True)
+            if res_u:
+                u_data = res_u[0]
+                st.session_state.logged_in = True
+                st.session_state.usuario_nombre = u_data[0]
+                st.session_state.usuario_rol = u_data[1]
+                st.session_state.fecha_login = fecha_hoy_str
 
 if st.session_state.fecha_login and st.session_state.fecha_login != fecha_hoy_str:
     st.session_state.logged_in = False
     st.session_state.usuario_rol = None
     st.session_state.usuario_nombre = None
-
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "usuario_rol" not in st.session_state:
-    st.session_state.usuario_rol = None
-if "usuario_nombre" not in st.session_state:
-    st.session_state.usuario_nombre = None
-if "pantalla_activa" not in st.session_state:
-    st.session_state.pantalla_activa = "buscar"
+    st.session_state.fecha_login = None
 
 config = db.cargar_configuracion_db()
 
@@ -290,18 +300,6 @@ if "logo_bytes" not in st.session_state:
 
 if "fondo_bytes" not in st.session_state:
     st.session_state.fondo_bytes = FONDO_BYTES
-
-if "reset_form" not in st.session_state:
-    st.session_state.reset_form = 0
-
-if "boleta_ventas" not in st.session_state:
-    st.session_state.boleta_ventas = []
-
-if "carrito_compras" not in st.session_state:
-    st.session_state.carrito_compras = []
-
-if "reset_fecha_version" not in st.session_state:
-    st.session_state.reset_fecha_version = 0
 
 # =====================================================================
 # MOTOR DE ESTILOS CSS DINÁMICOS Y TARJETAS DE PRECIO
@@ -478,6 +476,7 @@ def modal_login():
                 
                 st.query_params["auth_user"] = u_data[0]
                 st.query_params["auth_date"] = fecha_hoy_str
+                st.query_params["pantalla"] = st.session_state.pantalla_activa
                 
                 st.toast(f"Bienvenido {u_data[0]} ({u_data[2]})", icon="🔑")
                 st.rerun()
@@ -2097,40 +2096,42 @@ elif menu_url == "usuarios":
     st.header("👥 Gestión de Usuarios")
     
     if st.session_state.usuario_rol != "admin":
-        st.error("🔒 Acceso Restringido: No tienes permisos para administrar cuentas de usuario.")
+        st.error("🔒 Acceso Restringido: Solo el Administrador puede gestionar los usuarios del sistema.")
     else:
+        st.subheader("📋 Lista de Usuarios Registrados")
+        usuarios_db = db.ejecutar_query("SELECT usuario, rol FROM usuarios ORDER BY usuario ASC", fetch=True)
+        
+        if usuarios_db:
+            df_usuarios = pd.DataFrame(usuarios_db, columns=["Nombre de Usuario", "Rol"])
+            st.dataframe(df_usuarios, use_container_width=True)
+            
+        st.markdown("---")
         st.subheader("➕ Registrar Nuevo Usuario")
-        with st.form("form_nuevo_usr", clear_on_submit=True):
+        
+        with st.form("form_nuevo_usuario", clear_on_submit=True):
             col_u1, col_u2, col_u3 = st.columns(3)
             with col_u1:
-                n_usr = st.text_input("Nombre de Usuario")
+                nuevo_usuario_name = st.text_input("Usuario")
             with col_u2:
-                n_pwd = st.text_input("Contraseña", type="password")
+                nuevo_usuario_pass = st.text_input("Contraseña", type="password")
             with col_u3:
-                n_rol = st.selectbox("Rol de Acceso", ["vendedor", "admin"])
+                nuevo_usuario_rol = st.selectbox("Rol", ["vendedor", "admin"])
                 
-            crear_usr = st.form_submit_button("👤 Crear Usuario")
+            crear_usuario = st.form_submit_button("💾 Crear Usuario", type="primary")
             
-            if crear_usr:
-                if not n_usr or not n_pwd:
-                    st.error("⚠️ Debes completar todos los campos.")
+            if crear_usuario:
+                if not nuevo_usuario_name.strip() or not nuevo_usuario_pass.strip():
+                    st.error("⚠️ Debes ingresar un nombre de usuario y una contraseña válida.")
                 else:
-                    usr_ex = db.ejecutar_query("SELECT usuario FROM usuarios WHERE usuario = %s", (n_usr.strip(),), fetch=True)
-                    if usr_ex:
-                        st.error("⚠️ El usuario ya existe.")
+                    existe_u = db.ejecutar_query("SELECT usuario FROM usuarios WHERE usuario = %s", (nuevo_usuario_name.strip(),), fetch=True)
+                    if existe_u:
+                        st.error(f"⚠️ El usuario '{nuevo_usuario_name.strip()}' ya existe en el sistema.")
                     else:
                         db.ejecutar_query(
                             "INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)",
-                            (n_usr.strip(), n_pwd.strip(), n_rol),
+                            (nuevo_usuario_name.strip(), nuevo_usuario_pass.strip(), nuevo_usuario_rol),
                             commit=True
                         )
-                        st.success(f"🎉 ¡Usuario '{n_usr}' registrado exitosamente!")
+                        st.cache_data.clear()
+                        st.success(f"🎉 ¡Usuario '{nuevo_usuario_name.strip()}' registrado exitosamente!")
                         st.rerun()
-                        
-        st.markdown("---")
-        st.subheader("📋 Usuarios Registrados")
-        
-        lista_usrs = db.ejecutar_query("SELECT id_usuario, usuario, rol FROM usuarios ORDER BY usuario ASC", fetch=True)
-        if lista_usrs:
-            df_usrs = pd.DataFrame(lista_usrs, columns=["ID", "Usuario", "Rol"])
-            st.dataframe(df_usrs, use_container_width=True)
