@@ -231,7 +231,6 @@ def obtener_fecha_hoy():
 fecha_hoy_local = obtener_fecha_hoy()
 fecha_hoy_str = fecha_hoy_local.strftime('%Y-%m-%d')
 
-# Inicialización garantizada contra fallos por inactividad
 defaults_state = {
     "logged_in": False,
     "usuario_rol": None,
@@ -302,7 +301,7 @@ if "fondo_bytes" not in st.session_state:
     st.session_state.fondo_bytes = FONDO_BYTES
 
 # =====================================================================
-# MOTOR DE ESTILOS CSS DINÁMICOS Y TARJETAS DE PRECIO
+# MOTOR DE ESTILOS CSS DINÁMICOS
 # =====================================================================
 config_temas = {
     "Celeste Pastel": {
@@ -1623,9 +1622,6 @@ elif menu_url == "reportes":
     
     st.markdown("---")
 
-    # -----------------------------------------------------------------
-    # MÓDULO 1: REPORTE PERSONALIZADO POR PRODUCTO (KÁRDEX)
-    # -----------------------------------------------------------------
     if tipo_reporte_sel == "🔍 Reporte por Producto":
         col_tit_rp, col_btn_edit_rp = st.columns([0.92, 0.08])
         with col_tit_rp:
@@ -1832,9 +1828,6 @@ elif menu_url == "reportes":
             else:
                 st.info("👆 Selecciona o busca un producto en la lista desplegable superior para cargar su reporte.")
 
-    # -----------------------------------------------------------------
-    # MÓDULO 2: REPORTE DE VENTAS
-    # -----------------------------------------------------------------
     elif tipo_reporte_sel == "💵 Reporte de Ventas":
         col_tit_v, col_btn_edit_v = st.columns([0.92, 0.08])
         with col_tit_v:
@@ -1940,9 +1933,6 @@ elif menu_url == "reportes":
                         use_container_width=True
                     )
 
-    # -----------------------------------------------------------------
-    # MÓDULO 3: REPORTE DE COMPRAS
-    # -----------------------------------------------------------------
     elif tipo_reporte_sel == "🛒 Reporte de Compras":
         col_tit_c, col_btn_edit_c = st.columns([0.92, 0.08])
         with col_tit_c:
@@ -2090,48 +2080,41 @@ elif menu_url == "config":
             st.rerun()
 
 # =====================================================================
-# PANTALLA 7: GESTIÓN DE USUARIOS
+# PANTALLA 7: GESTIONAR USUARIOS (ADMIN)
 # =====================================================================
 elif menu_url == "usuarios":
-    st.header("👥 Gestión de Usuarios")
+    st.header("👥 Gestión de Usuarios y Accesos")
     
     if st.session_state.usuario_rol != "admin":
-        st.error("🔒 Acceso Restringido: Solo el Administrador puede gestionar los usuarios del sistema.")
+        st.error("🔒 Acceso Restringido: Esta área es solo para Administradores.")
     else:
-        st.subheader("📋 Lista de Usuarios Registrados")
-        usuarios_db = db.ejecutar_query("SELECT usuario, rol FROM usuarios ORDER BY usuario ASC", fetch=True)
-        
-        if usuarios_db:
-            df_usuarios = pd.DataFrame(usuarios_db, columns=["Nombre de Usuario", "Rol"])
-            st.dataframe(df_usuarios, use_container_width=True)
-            
-        st.markdown("---")
-        st.subheader("➕ Registrar Nuevo Usuario")
-        
-        with st.form("form_nuevo_usuario", clear_on_submit=True):
+        st.subheader("➕ Crear Nuevo Usuario")
+        with st.form("form_crear_usuario", clear_on_submit=True):
             col_u1, col_u2, col_u3 = st.columns(3)
             with col_u1:
-                nuevo_usuario_name = st.text_input("Usuario")
+                nuevo_usr_nom = st.text_input("Nombre de Usuario")
             with col_u2:
-                nuevo_usuario_pass = st.text_input("Contraseña", type="password")
+                nuevo_usr_pass = st.text_input("Contraseña", type="password")
             with col_u3:
-                nuevo_usuario_rol = st.selectbox("Rol", ["vendedor", "admin"])
+                nuevo_usr_rol = st.selectbox("Rol de Acceso", ["vendedor", "admin"])
                 
-            crear_usuario = st.form_submit_button("💾 Crear Usuario", type="primary")
+            btn_crear_usr = st.form_submit_button("✨ Crear Usuario")
             
-            if crear_usuario:
-                if not nuevo_usuario_name.strip() or not nuevo_usuario_pass.strip():
-                    st.error("⚠️ Debes ingresar un nombre de usuario y una contraseña válida.")
+            if btn_crear_usr:
+                if not nuevo_usr_nom or not nuevo_usr_pass:
+                    st.error("⚠️ El nombre de usuario y contraseña son requeridos.")
                 else:
-                    existe_u = db.ejecutar_query("SELECT usuario FROM usuarios WHERE usuario = %s", (nuevo_usuario_name.strip(),), fetch=True)
+                    existe_u = db.ejecutar_query("SELECT usuario FROM usuarios WHERE usuario = %s", (nuevo_usr_nom.strip(),), fetch=True)
                     if existe_u:
-                        st.error(f"⚠️ El usuario '{nuevo_usuario_name.strip()}' ya existe en el sistema.")
+                        st.error(f"⚠️ El usuario '{nuevo_usr_nom}' ya existe.")
                     else:
-                        db.ejecutar_query(
-                            "INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)",
-                            (nuevo_usuario_name.strip(), nuevo_usuario_pass.strip(), nuevo_usuario_rol),
-                            commit=True
-                        )
-                        st.cache_data.clear()
-                        st.success(f"🎉 ¡Usuario '{nuevo_usuario_name.strip()}' registrado exitosamente!")
+                        db.ejecutar_query("INSERT INTO usuarios (usuario, password, rol) VALUES (%s, %s, %s)", (nuevo_usr_nom.strip(), nuevo_usr_pass.strip(), nuevo_usr_rol), commit=True)
+                        st.toast(f"✅ Usuario '{nuevo_usr_nom}' creado con éxito.", icon="👤")
                         st.rerun()
+                        
+        st.markdown("---")
+        st.subheader("📋 Usuarios Registrados")
+        lista_u = db.ejecutar_query("SELECT id_usuario, usuario, rol FROM usuarios ORDER BY id_usuario ASC", fetch=True)
+        if lista_u:
+            df_u = pd.DataFrame(lista_u, columns=["ID", "Usuario", "Rol"])
+            st.dataframe(df_u, use_container_width=True)
