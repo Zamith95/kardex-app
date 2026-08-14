@@ -39,25 +39,15 @@ def cargar_productos_db():
 
 # 3. Escrituras genéricas
 def ejecutar_escritura(query, params=None):
-    conn = get_connection()
-    try:
-        with conn.session as session:
-            session.execute(text(query) if isinstance(query, str) else query, params or {})
-            session.commit()
-    except Exception as e:
-        st.error(f"Error al ejecutar escritura: {e}")
+    ejecutar_query(query, params, commit=True)
 
 # 4. Consultas sin caché
 def ejecutar_consulta(query, params=None):
-    conn = get_connection()
-    try:
-        return conn.query(query, params=params, ttl=0)
-    except Exception as e:
-        st.error(f"Error al ejecutar consulta: {e}")
-        return None
+    df = ejecutar_query(query, params, fetch=True, format_as_df=True)
+    return df
 
 # 5. Función de compatibilidad total con app.py (Soporta %s, tuples, fetch y commit)
-def ejecutar_query(query, params=None, fetch=False, commit=False):
+def ejecutar_query(query, params=None, fetch=False, commit=False, format_as_df=False):
     conn = get_connection()
     
     formatted_params = {}
@@ -66,29 +56,24 @@ def ejecutar_query(query, params=None, fetch=False, commit=False):
     if isinstance(params, (tuple, list)):
         for idx, val in enumerate(params):
             param_key = f"param_{idx}"
-            query_mod = re.sub(r'%s', f":{param_key}", query_mod, count=1)
+            query_mod = query_mod.replace("%s", f":{param_key}", 1)
             formatted_params[param_key] = val
     elif isinstance(params, dict):
         formatted_params = params
 
-    if fetch:
-        try:
-            df = conn.query(query_mod, params=formatted_params if formatted_params else None, ttl=0)
-            if df is not None and not df.empty:
-                return df.to_records(index=False).tolist()
-            return []
-        except Exception as e:
-            st.error(f"Error al consultar la base de datos: {e}")
-            return []
-
-    if commit:
-        try:
+    try:
+        if commit or not fetch:
             with conn.session as session:
-                session.execute(text(query_mod), formatted_params if formatted_params else {})
+                session.execute(text(query_mod), formatted_params)
                 session.commit()
             return True
-        except Exception as e:
-            st.error(f"Error al guardar datos: {e}")
-            return False
-
-    return None
+        else:
+            if format_as_df:
+                return conn.query(query_mod, params=formatted_params, ttl=0)
+            else:
+                with conn.session as session:
+                    res = session.execute(text(query_mod), formatted_params)
+                    return res.fetchall()
+    except Exception as e:
+        st.error(f"Error en consulta BD: {e}")
+        return None
