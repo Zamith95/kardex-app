@@ -891,9 +891,9 @@ if menu_url == "buscar":
                             
                             guardar_edit = st.form_submit_button("💾 Guardar Cambios")
                             if guardar_edit:
-                                edit_nombre_clean = str(edit_nombre).strip().encode('latin1', errors='ignore').decode('latin1')
-                                edit_marca_clean = str(edit_marca).strip().encode('latin1', errors='ignore').decode('latin1')
-                                edit_lab_clean = str(edit_laboratorio).strip().encode('latin1', errors='ignore').decode('latin1')
+                                edit_nombre_clean = str(edit_nombre).strip()
+                                edit_marca_clean = str(edit_marca).strip()
+                                edit_lab_clean = str(edit_laboratorio).strip()
                                 
                                 db.ejecutar_query(
                                     "UPDATE productos SET nombre=%s, marca=%s, laboratorio=%s, presentacion=%s, unidades_por_caja=%s, unidades_por_blister=%s, fecha_vencimiento=%s, stock_actual_unidades=%s, precio_costo_unidad=%s, precio_venta_unidad=%s, precio_venta_blister=%s WHERE id_producto=%s",
