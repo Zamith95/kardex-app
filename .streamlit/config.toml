@@ -1,0 +1,3 @@
+[server]
+pingTimeout = 120
+maxMessageSize = 200
