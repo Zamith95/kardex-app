@@ -1,17 +1,34 @@
 import streamlit as st
-import re
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError, DBAPIError
 
-# Conexión gestionada de Streamlit para PostgreSQL (Neon)
-def get_connection():
-    return st.connection("postgresql", type="sql")
+# Obtener URL desde secrets de Streamlit
+def get_db_url():
+    if "connections" in st.secrets and "postgresql" in st.secrets["connections"]:
+        return st.secrets["connections"]["postgresql"]["url"]
+    elif "DATABASE_URL" in st.secrets:
+        return st.secrets["DATABASE_URL"]
+    else:
+        raise ValueError("No se encontró la URL de la base de datos en .streamlit/secrets.toml")
+
+# Crear el Engine con protección anti-desconexión
+@st.cache_resource(ttl=300)
+def get_engine():
+    db_url = get_db_url()
+    return create_engine(
+        db_url,
+        pool_pre_ping=True,      # Valida conexión antes de consultar
+        pool_recycle=300,        # Recicla conexiones cada 5 min
+        pool_size=10,            # Tamaño del pool de conexiones
+        max_overflow=20,         # Capacidad adicional para picos de uso
+        connect_args={"connect_timeout": 10}
+    )
 
 # 1. Configuración inicial
 @st.cache_data(ttl=3600)
 def cargar_configuracion_db():
-    conn = get_connection()
     try:
-        df = conn.query("SELECT nombre_negocio, tema_color, logo_bytes, fondo_bytes FROM configuracion WHERE id = 1;", ttl=0)
+        df = ejecutar_consulta("SELECT nombre_negocio, tema_color, logo_bytes, fondo_bytes FROM configuracion WHERE id = 1;")
         if df is not None and not df.empty:
             row = df.iloc[0]
             return {
@@ -27,9 +44,8 @@ def cargar_configuracion_db():
 # 2. Cargar productos (Devuelve lista de diccionarios)
 @st.cache_data(ttl=60)
 def cargar_productos_db():
-    conn = get_connection()
     try:
-        df = conn.query("SELECT * FROM productos ORDER BY nombre ASC;", ttl=0)
+        df = ejecutar_consulta("SELECT * FROM productos ORDER BY nombre ASC;")
         if df is None or df.empty:
             return None
         return df.to_dict(orient="records")
@@ -39,16 +55,16 @@ def cargar_productos_db():
 
 # 3. Escrituras genéricas
 def ejecutar_escritura(query, params=None):
-    ejecutar_query(query, params, commit=True)
+    return ejecutar_query(query, params, commit=True)
 
 # 4. Consultas sin caché
 def ejecutar_consulta(query, params=None):
-    df = ejecutar_query(query, params, fetch=True, format_as_df=True)
-    return df
+    import pandas as pd
+    return ejecutar_query(query, params, fetch=True, format_as_df=True)
 
-# 5. Función de compatibilidad total con app.py (Soporta %s, tuples, fetch y commit)
+# 5. Función principal con reintento automático anti-desconexión
 def ejecutar_query(query, params=None, fetch=False, commit=False, format_as_df=False):
-    conn = get_connection()
+    import pandas as pd
     
     formatted_params = {}
     query_mod = query
@@ -61,19 +77,30 @@ def ejecutar_query(query, params=None, fetch=False, commit=False, format_as_df=F
     elif isinstance(params, dict):
         formatted_params = params
 
-    try:
-        if commit or not fetch:
-            with conn.session as session:
-                session.execute(text(query_mod), formatted_params)
-                session.commit()
-            return True
-        else:
-            if format_as_df:
-                return conn.query(query_mod, params=formatted_params, ttl=0)
+    def _ejecutar():
+        engine = get_engine()
+        with engine.connect() as conn:
+            if commit or not fetch:
+                with conn.begin():
+                    conn.execute(text(query_mod), formatted_params)
+                return True
             else:
-                with conn.session as session:
-                    res = session.execute(text(query_mod), formatted_params)
+                if format_as_df:
+                    return pd.read_sql_query(text(query_mod), conn, params=formatted_params)
+                else:
+                    res = conn.execute(text(query_mod), formatted_params)
                     return res.fetchall()
+
+    try:
+        return _ejecutar()
+    except (OperationalError, DBAPIError):
+        # Si falla por caída de conexión, recarga el motor e intenta una 2da vez automáticamente
+        st.cache_resource.clear()
+        try:
+            return _ejecutar()
+        except Exception as e:
+            st.error(f"Error en consulta BD: {e}")
+            return None
     except Exception as e:
         st.error(f"Error en consulta BD: {e}")
         return None
